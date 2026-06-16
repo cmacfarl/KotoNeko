@@ -1,26 +1,117 @@
-@* An input that live-converts romaji to hiragana as the user types. *@
+@* An input that live-converts romaji to hiragana as the user types.
 
-<input type="text"
+   The conversion runs *in the browser* (see kotoneko.js): JavaScript owns the
+   element's value while the user types. Blazor pushes a value INTO the input
+   only when it changes from the outside (initial load, jisho fill, kana-only
+   prefill) — never on the user's own keystrokes. That one rule is what keeps
+   typing reliable on Blazor Server: the old approach (value="@Value" +
+   server-side @oninput conversion) re-pushed a value on every keystroke, which
+   raced the user's typing over SignalR and dropped / reverted characters. *@
+
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<input @ref="_el"
+       type="text"
        class="@CssClass"
-       value="@Value"
        placeholder="@Placeholder"
        autocomplete="off"
        autocapitalize="off"
        autocorrect="off"
        spellcheck="false"
-       @oninput="OnInput" />
+       disabled="@Disabled" />
 
 @code {
     [Parameter] public string Value { get; set; } = string.Empty;
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string CssClass { get; set; } = "kn-input";
     [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public bool Disabled { get; set; }
 
-    private async Task OnInput(ChangeEventArgs e)
+    /// <summary>When true, Tab and Enter are swallowed and surfaced as
+    /// <see cref="OnTab"/> / <see cref="OnEnter"/> instead of moving focus.</summary>
+    [Parameter] public bool InterceptKeys { get; set; }
+    [Parameter] public EventCallback OnTab { get; set; }
+    [Parameter] public EventCallback OnEnter { get; set; }
+
+    private ElementReference _el;
+    private DotNetObjectReference<KanaInput>? _ref;
+    private bool _attached;
+
+    // The value the component believes is currently displayed in the input.
+    // OnKanaInput updates this BEFORE notifying the parent, so when the parent
+    // echoes the same value back as a parameter we recognise it as our own and
+    // do not push it back down (which would fight the user's typing).
+    private string _current = string.Empty;
+    private bool _pushNeeded;
+
+    protected override void OnParametersSet()
     {
-        string raw = e.Value?.ToString() ?? string.Empty;
-        string converted = RomajiConverter.ToHiragana(raw);
-        Value = converted;
+        if (Value != _current)
+        {
+            // Came from outside (load / jisho fill / prefill) -> show it.
+            _current = Value;
+            _pushNeeded = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _ref = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("kotoneko.kanaInput.attach", _el, _ref,
+                new { interceptKeys = InterceptKeys });
+            _attached = true;
+        }
+
+        if (_attached && _pushNeeded)
+        {
+            _pushNeeded = false;
+            await JS.InvokeVoidAsync("kotoneko.kanaInput.setValue", _el, _current);
+        }
+    }
+
+    // Invoked from JS after it has converted + displayed the value in the
+    // browser. We mirror it server-side and notify the parent. We do NOT write
+    // to the Value parameter, and we do NOT push anything back to the DOM.
+    [JSInvokable]
+    public async Task OnKanaInput(string converted)
+    {
+        _current = converted;
         await ValueChanged.InvokeAsync(converted);
+    }
+
+    [JSInvokable]
+    public async Task OnInterceptKey(string key)
+    {
+        if (key == "Tab")
+        {
+            await OnTab.InvokeAsync();
+        }
+        else if (key == "Enter")
+        {
+            await OnEnter.InvokeAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_ref is not null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("kotoneko.kanaInput.detach", _el);
+            }
+            catch (JSException)
+            {
+                // circuit may already be gone
+            }
+            catch (InvalidOperationException)
+            {
+                // prerender / no JS runtime
+            }
+            _ref.Dispose();
+        }
     }
 }

@@ -4,6 +4,7 @@
 @inject SourceService SourceService
 @inject KotoNeko.Jisho.JishoClient Jisho
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>@(Id is null ? "Add" : "Edit") vocabulary · KotoNeko</PageTitle>
 
@@ -21,14 +22,61 @@
 <div class="kn-panel">
     <div class="kn-grid-2">
         <div class="kn-form-row">
-            <label>Japanese writing</label>
-            <input class="kn-input kn-jp" @bind="_vocab.Japanese" placeholder="新聞 (use your IME for kanji)" />
-            <div class="kn-hint">The written form, including kanji. Type via your OS IME or paste.</div>
+            <label>Vocabulary Item</label>
+            <KanaInput Value="@_vocab.Japanese"
+                       ValueChanged="OnJapaneseChanged"
+                       CssClass="kn-input kn-jp"
+                       InterceptKeys="true"
+                       OnTab="SearchCandidatesAsync"
+                       OnEnter="UseKanaOnly" />
+            <div class="kn-hint">
+                Type the word in kana. Press <kbd>Tab</kbd> to look up
+                its writing on jisho, or <kbd>Enter</kbd> if it's a kana-only word.
+            </div>
+
+            @if (_searching)
+            {
+                <div class="kn-candidates"><div class="kn-candidates-head">Searching jisho…</div></div>
+            }
+            else if (_candidates.Count > 0)
+            {
+                <div class="kn-candidates">
+                    <div class="kn-candidates-head">
+                        <span>jisho matches for 「@_searchedFor」 — pick a writing</span>
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="DismissCandidates" title="Dismiss">✕</button>
+                    </div>
+                    @foreach (KotoNeko.Jisho.JishoCandidate c in _candidates)
+                    {
+                        KotoNeko.Jisho.JishoCandidate candidate = c;
+                        <button class="kn-candidate" type="button" @onclick="() => ApplyCandidate(candidate)">
+                            <span class="kn-jp kn-candidate-word">@candidate.DisplayWriting</span>
+                            <span class="kn-candidate-reading kn-jp">@candidate.Reading</span>
+                            <span class="kn-candidate-meaning">@string.Join("; ", candidate.Meanings.Take(3))</span>
+                            @if (candidate.VerbClass != VerbClass.None)
+                            {
+                                <span class="kn-candidate-pos">@VerbClassLabel(candidate.VerbClass)</span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
         </div>
         <div class="kn-form-row">
             <label>Reading (kana)</label>
-            <KanaInput Value="_vocab.Reading" ValueChanged="@(v => _vocab.Reading = v)" CssClass="kn-input kn-jp" Placeholder="しんぶん (type romaji)" />
-            <div class="kn-hint">Romaji is converted to hiragana as you type.</div>
+            <KanaInput Value="@_vocab.Reading" 
+                       ValueChanged="@(v => _vocab.Reading = v)" 
+                       CssClass="kn-input kn-jp" 
+                       Disabled="_readingLocked" />
+            <div class="kn-hint">
+                @if (_readingLocked)
+                {
+                    <text>Kana-only word — reading copied from the writing. Edit the writing to change it.</text>
+                }
+                else
+                {
+                    <text>Romaji is converted to hiragana as you type.</text>
+                }
+            </div>
         </div>
     </div>
 
@@ -39,7 +87,7 @@
         {
             int index = i;
             <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.4rem">
-                <input class="kn-input" @bind="_meanings[index].Text" placeholder="@(index == 0 ? "newspaper (primary)" : "another accepted meaning")" />
+                <input class="kn-input" id="@(index == 0 ? "kn-first-meaning" : null)" @bind="_meanings[index].Text" />
                 <button class="kn-btn kn-btn-sm kn-btn-danger" type="button" @onclick="() => RemoveMeaning(index)" disabled="@(_meanings.Count == 1)" title="Remove">✕</button>
             </div>
         }
@@ -53,7 +101,7 @@
 
     <div class="kn-form-row">
         <label>Context sentence (optional)</label>
-        <textarea class="kn-textarea kn-jp" @bind="_vocab.ContextSentence" placeholder="毎朝新聞を読みます。"></textarea>
+        <textarea class="kn-textarea kn-jp" @bind="_vocab.ContextSentence"></textarea>
     </div>
 
     <div class="kn-form-row">
@@ -145,6 +193,13 @@
     private string? _error;
     private bool _busy;
 
+    // Tab-to-search candidate list + kana-only reading lock.
+    private List<KotoNeko.Jisho.JishoCandidate> _candidates = new();
+    private string _searchedFor = string.Empty;
+    private bool _searching;
+    private bool _readingLocked;
+    private bool _focusMeaningQueued;
+
     private bool CanSave =>
         !string.IsNullOrWhiteSpace(_vocab.Japanese)
         && !string.IsNullOrWhiteSpace(_vocab.Reading)
@@ -153,6 +208,12 @@
     protected override async Task OnParametersSetAsync()
     {
         _sources = await SourceService.GetAllAsync();
+
+        // Reset transient UI state in case the component instance is reused
+        // across an edit -> new navigation.
+        _candidates = new();
+        _searching = false;
+        _readingLocked = false;
 
         if (Id is int id)
         {
@@ -218,6 +279,110 @@
             .ToList();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusMeaningQueued)
+        {
+            _focusMeaningQueued = false;
+            try
+            {
+                await JS.InvokeVoidAsync("kotoneko.focusById", "kn-first-meaning");
+            }
+            catch (JSException)
+            {
+                // ignore focus failures
+            }
+        }
+    }
+
+    // The user typed in the "Japanese writing" field. Any edit invalidates a
+    // pending candidate list and unlocks the (kana-only) reading.
+    private void OnJapaneseChanged(string value)
+    {
+        _vocab.Japanese = value;
+        _readingLocked = false;
+        if (_candidates.Count > 0)
+        {
+            _candidates = new();
+        }
+    }
+
+    // Tab in the writing field: look up matches for the kana on jisho.
+    private async Task SearchCandidatesAsync()
+    {
+        _error = null;
+        _message = null;
+
+        string keyword = _vocab.Japanese?.Trim() ?? string.Empty;
+        if (keyword.Length == 0)
+        {
+            return;
+        }
+
+        _searching = true;
+        _candidates = new();
+        _searchedFor = keyword;
+        StateHasChanged();
+        try
+        {
+            _candidates = (await Jisho.SearchAsync(keyword)).ToList();
+            if (_candidates.Count == 0)
+            {
+                _error = "jisho found no matches (or it's unavailable). Press Enter for a kana-only word, or type the writing.";
+            }
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private void DismissCandidates()
+    {
+        _candidates = new();
+    }
+
+    // The user picked a writing from the jisho list.
+    private void ApplyCandidate(KotoNeko.Jisho.JishoCandidate c)
+    {
+        _vocab.Japanese = c.DisplayWriting;
+        _vocab.Reading = c.Reading;
+        _readingLocked = false;
+
+        if (_meanings.Count > 0) {
+            _meanings.Clear();
+        }
+        
+        bool hasMeanings = _meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
+        if (!hasMeanings && c.Meanings.Count > 0) {
+            _meanings = c.Meanings.Select(m => new MeaningRow { Text = m }).ToList();
+        }
+
+        _vocab.VerbClass = c.VerbClass;
+        if (c.VerbClass != VerbClass.None) {
+            RegenerateConjugations();
+        }
+
+        _candidates = new();
+        _focusMeaningQueued = true;
+    }
+
+    // Enter in the writing field: it's a kana-only word, so the reading is the
+    // same kana. Lock the (now redundant) reading and jump to the meanings.
+    private void UseKanaOnly()
+    {
+        string kana = _vocab.Japanese?.Trim() ?? string.Empty;
+        if (kana.Length == 0)
+        {
+            return;
+        }
+
+        _vocab.Reading = kana;
+        _readingLocked = true;
+        _candidates = new();
+        _focusMeaningQueued = true;
+    }
+
     private async Task FetchFromJishoAsync()
     {
         _error = null;
@@ -248,6 +413,7 @@
             if (!string.IsNullOrWhiteSpace(result.Reading))
             {
                 _vocab.Reading = result.Reading;
+                _readingLocked = false;
             }
 
             // Fill meanings as separate rows if the user hasn't entered any yet.

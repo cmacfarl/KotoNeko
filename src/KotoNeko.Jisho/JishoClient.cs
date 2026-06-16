@@ -47,6 +47,90 @@ public class JishoClient
         }
     }
 
+    /// <summary>
+    /// Search jisho for a keyword (typically the kana the user typed) and return
+    /// the matches as candidates, so they can pick the written (kanji) form. The
+    /// list is empty on no-match or any network/parse error.
+    /// </summary>
+    public async Task<IReadOnlyList<JishoCandidate>> SearchAsync(
+        string keyword, int max = 12, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return Array.Empty<JishoCandidate>();
+        }
+
+        try
+        {
+            string url = SearchUrl + Uri.EscapeDataString(keyword.Trim());
+            using HttpResponseMessage response = await _http.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return Array.Empty<JishoCandidate>();
+            }
+
+            await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using JsonDocument doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+            return ParseCandidates(doc, max);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return Array.Empty<JishoCandidate>();
+        }
+    }
+
+    private static IReadOnlyList<JishoCandidate> ParseCandidates(JsonDocument doc, int max)
+    {
+        if (!doc.RootElement.TryGetProperty("data", out JsonElement data) || data.GetArrayLength() == 0)
+        {
+            return Array.Empty<JishoCandidate>();
+        }
+
+        List<JishoCandidate> candidates = new();
+        foreach (JsonElement entry in data.EnumerateArray())
+        {
+            if (candidates.Count >= max)
+            {
+                break;
+            }
+
+            (string word, string reading) = ExtractWordAndReading(entry);
+            if (word.Length == 0 && reading.Length == 0)
+            {
+                continue;
+            }
+
+            candidates.Add(new JishoCandidate
+            {
+                Word = word,
+                Reading = reading,
+                Meanings = ExtractMeanings(entry),
+                VerbClass = ExtractVerbClass(entry),
+            });
+        }
+
+        return candidates;
+    }
+
+    /// <summary>The writing + reading from an entry's first japanese block.</summary>
+    private static (string word, string reading) ExtractWordAndReading(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("japanese", out JsonElement japanese) || japanese.GetArrayLength() == 0)
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        JsonElement first = japanese[0];
+        string word = first.TryGetProperty("word", out JsonElement w) && w.ValueKind == JsonValueKind.String
+            ? w.GetString() ?? string.Empty
+            : string.Empty;
+        string reading = first.TryGetProperty("reading", out JsonElement r) && r.ValueKind == JsonValueKind.String
+            ? r.GetString() ?? string.Empty
+            : string.Empty;
+        return (word, reading);
+    }
+
     private static JishoLookupResult Parse(JsonDocument doc, string word)
     {
         if (!doc.RootElement.TryGetProperty("data", out JsonElement data) || data.GetArrayLength() == 0)

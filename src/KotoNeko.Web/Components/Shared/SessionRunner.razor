@@ -63,10 +63,10 @@ else
             <input @ref="_inputRef"
                    type="text"
                    value="@_input"
+                   data-kn-convert="@(IsKana(q.Type) ? "true" : "false")"
                    placeholder="@Placeholder(q)"
                    autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                    readonly="@(_mode == Mode.ShowingResult)"
-                   @oninput="OnInput"
                    @onkeydown="OnKeyDown" />
         </div>
 
@@ -129,6 +129,8 @@ else
     private bool _persisted;
 
     private ElementReference _inputRef;
+    private DotNetObjectReference<SessionRunner>? _dotNetRef;
+    private bool _kanaAttached;
     private readonly Stack<string> _typedHistory = new();
 
     private int ProgressPercent =>
@@ -144,16 +146,19 @@ else
         }
     }
 
-    private void OnInput(ChangeEventArgs e)
+    // Called from JS (kotoneko.kanaInput) after it has converted + displayed the
+    // value in the browser. We only mirror it into component state; we do NOT
+    // re-render the input here, so the server never pushes the value back and
+    // races the user's typing. (No StateHasChanged: JSInvokable calls don't
+    // auto-render, which is exactly what we want.)
+    [JSInvokable]
+    public Task OnKanaInput(string converted)
     {
-        if (_mode == Mode.ShowingResult)
+        if (_mode != Mode.ShowingResult)
         {
-            return;
+            _input = converted;
         }
-
-        string raw = e.Value?.ToString() ?? string.Empty;
-        ReviewQuestion? q = Session?.CurrentQuestion;
-        _input = q is not null && IsKana(q.Type) ? RomajiConverter.ToHiragana(raw) : raw;
+        return Task.CompletedTask;
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -184,6 +189,12 @@ else
             await ShakeAsync("Type an answer.");
             return;
         }
+
+        // The browser already converted kana answers; re-run the C# converter as
+        // the authoritative grading input (idempotent on kana, and a safety net
+        // against any client/server drift).
+        ReviewQuestion question = Session.CurrentQuestion;
+        _input = IsKana(question.Type) ? RomajiConverter.ToHiragana(_input) : _input;
 
         SubmitOutcome outcome = Session.Submit(_input);
 
@@ -259,6 +270,24 @@ else
             await PersistAsync();
         }
 
+        // Wire the answer box up to the client-side kana converter once it exists.
+        // The same <input> element is reused across questions; the per-question
+        // data-kn-convert attribute decides whether to convert.
+        if (!_kanaAttached && Session?.CurrentQuestion is not null)
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("kotoneko.kanaInput.attach", _inputRef, _dotNetRef,
+                    new { interceptKeys = false });
+                _kanaAttached = true;
+            }
+            catch (JSException)
+            {
+                // ignore; will retry on a later render
+            }
+        }
+
         if (_focusQueued)
         {
             _focusQueued = false;
@@ -300,5 +329,22 @@ else
     {
         // Persist progress if the component is torn down mid-session.
         await PersistAsync();
+
+        if (_kanaAttached)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("kotoneko.kanaInput.detach", _inputRef);
+            }
+            catch (JSException)
+            {
+                // circuit may already be gone
+            }
+            catch (InvalidOperationException)
+            {
+                // no JS runtime
+            }
+        }
+        _dotNetRef?.Dispose();
     }
 }

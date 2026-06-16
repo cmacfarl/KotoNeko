@@ -611,3 +611,78 @@ h1, h2, h3 {
     font-weight: 700;
     color: var(--kn-vocab);
 }
+
+/* Disabled inputs (e.g. a locked kana-only reading) */
+.kn-input:disabled {
+    background: #f3f3f3;
+    color: var(--kn-muted);
+    cursor: not-allowed;
+}
+
+/* Inline keyboard-key hint */
+kbd {
+    display: inline-block;
+    padding: 0.05rem 0.35rem;
+    border: 1px solid #ccc;
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: #fafafa;
+    font-family: var(--kn-font);
+    font-size: 0.78rem;
+    color: var(--kn-ink);
+}
+
+/* jisho candidate list (Tab lookup on the Add-vocabulary writing field) */
+.kn-candidates {
+    margin-top: 0.5rem;
+    border: 1px solid var(--kn-border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.kn-candidates-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: #f7f7f7;
+    border-bottom: 1px solid var(--kn-border);
+    font-size: 0.82rem;
+    color: var(--kn-muted);
+}
+
+.kn-candidate {
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fff;
+    cursor: pointer;
+    font-family: var(--kn-font);
+}
+
+.kn-candidate:last-child { border-bottom: none; }
+
+.kn-candidate:hover, .kn-candidate:focus {
+    background: rgba(41, 77, 219, 0.08);
+    outline: none;
+}
+
+.kn-candidate-word { font-size: 1.2rem; font-weight: 600; min-width: 4.5rem; }
+.kn-candidate-reading { color: var(--kn-muted); min-width: 5rem; }
+.kn-candidate-meaning { color: var(--kn-ink); font-size: 0.9rem; flex: 1; }
+
+.kn-candidate-pos {
+    font-size: 0.72rem;
+    color: var(--kn-guru);
+    background: rgba(136, 45, 158, 0.1);
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    white-space: nowrap;
+}
