@@ -1,0 +1,44 @@
+@implements IDisposable
+@inject NavigationManager Nav
+
+<nav class="kn-nav">
+    <div class="kn-nav-inner">
+        <a class="kn-brand" href="/">
+            <span>🐱</span> KotoNeko
+        </a>
+        <a class="kn-nav-link @ActiveClass("", true)" href="/">Dashboard</a>
+        <a class="kn-nav-link @ActiveClass("lessons")" href="/lessons">Lessons</a>
+        <a class="kn-nav-link @ActiveClass("reviews")" href="/reviews">Reviews</a>
+        <span class="kn-nav-spacer"></span>
+        <a class="kn-nav-link @ActiveClass("vocab")" href="/vocab">Vocabulary</a>
+        <a class="kn-nav-link @ActiveClass("sources")" href="/sources">Sources</a>
+    </div>
+</nav>
+
+@code {
+    private string CurrentRelative => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string ActiveClass(string segment, bool exact = false)
+    {
+        string current = CurrentRelative;
+        bool active = exact
+            ? current.Length == 0
+            : current.StartsWith(segment, StringComparison.OrdinalIgnoreCase);
+        return active ? "active" : string.Empty;
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

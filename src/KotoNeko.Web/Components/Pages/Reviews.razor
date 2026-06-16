@@ -1,0 +1,37 @@
+@page "/reviews"
+@inject ReviewService ReviewService
+@inject NavigationManager Nav
+
+@if (_loading)
+{
+    <p class="kn-empty">Loading reviews…</p>
+}
+else if (_session is null)
+{
+    <div class="kn-session-done">
+        <div class="big">😺</div>
+        <h1>No reviews due</h1>
+        <p>Nothing is due right now. Learn some lessons or come back later.</p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+    </div>
+}
+else
+{
+    <SessionRunner Session="_session" OnExit="GoHome" />
+}
+
+@code {
+    private ReviewSession? _session;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _session = await ReviewService.BuildReviewSessionAsync(DateTime.UtcNow);
+        _loading = false;
+    }
+
+    private void GoHome()
+    {
+        Nav.NavigateTo("/");
+    }
+}

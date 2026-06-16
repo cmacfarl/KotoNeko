@@ -1,0 +1,26 @@
+@* An input that live-converts romaji to hiragana as the user types. *@
+
+<input type="text"
+       class="@CssClass"
+       value="@Value"
+       placeholder="@Placeholder"
+       autocomplete="off"
+       autocapitalize="off"
+       autocorrect="off"
+       spellcheck="false"
+       @oninput="OnInput" />
+
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string CssClass { get; set; } = "kn-input";
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        string raw = e.Value?.ToString() ?? string.Empty;
+        string converted = RomajiConverter.ToHiragana(raw);
+        Value = converted;
+        await ValueChanged.InvokeAsync(converted);
+    }
+}

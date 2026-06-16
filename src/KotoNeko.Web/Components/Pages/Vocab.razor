@@ -1,0 +1,106 @@
+@page "/vocab"
+@inject VocabularyService VocabularyService
+@inject NavigationManager Nav
+
+<PageTitle>Vocabulary · KotoNeko</PageTitle>
+
+<h1>Vocabulary</h1>
+
+<div class="kn-toolbar">
+    <a class="kn-btn kn-btn-primary" href="/vocab/new">+ Add vocabulary</a>
+    <input class="kn-input" style="max-width:280px" placeholder="Search…" @bind="_search" @bind:event="oninput" @onkeyup="OnSearchKey" />
+    <label style="display:flex;align-items:center;gap:0.35rem;color:#666;font-size:0.9rem">
+        <input type="checkbox" @bind="_includeAsleep" @bind:after="LoadAsync" /> show asleep
+    </label>
+</div>
+
+@if (_items.Count == 0)
+{
+    <div class="kn-panel"><p class="kn-empty">No vocabulary yet. Add your first word.</p></div>
+}
+else
+{
+    <div class="kn-panel">
+        <table class="kn-table">
+            <thead>
+                <tr>
+                    <th>Word</th>
+                    <th>Reading</th>
+                    <th>Meaning</th>
+                    <th>Source</th>
+                    <th>Stage</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (Vocabulary v in _items)
+                {
+                    <tr class="@(v.IsAsleep ? "kn-asleep" : "")">
+                        <td>
+                            <span class="kn-jp">@v.Japanese</span>
+                            @if (v.IsVerb)
+                            {
+                                <span class="kn-pill kn-pill-verb">@v.VerbClass</span>
+                            }
+                            @if (v.IsAsleep)
+                            {
+                                <span class="kn-pill kn-pill-asleep">asleep</span>
+                            }
+                        </td>
+                        <td>@v.Reading</td>
+                        <td>@v.MeaningsDisplay</td>
+                        <td style="color:#888">@(v.SourceMaterial?.Name ?? "—")</td>
+                        <td>
+                            @if (v.Srs is not null)
+                            {
+                                <span class="kn-pill kn-pill-stage">@SrsSchedule.DisplayName(v.Srs.Stage)</span>
+                            }
+                            else
+                            {
+                                <span style="color:#bbb">not learned</span>
+                            }
+                        </td>
+                        <td style="text-align:right;white-space:nowrap">
+                            <button class="kn-btn kn-btn-sm" @onclick="() => Edit(v.Id)">Edit</button>
+                            <button class="kn-btn kn-btn-sm" @onclick="() => ToggleSleepAsync(v)">
+                                @(v.IsAsleep ? "Wake" : "Sleep")
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<Vocabulary> _items = new();
+    private string _search = string.Empty;
+    private bool _includeAsleep = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _items = await VocabularyService.GetAllAsync(_includeAsleep, _search);
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        await LoadAsync();
+    }
+
+    private void Edit(int id)
+    {
+        Nav.NavigateTo($"/vocab/{id}");
+    }
+
+    private async Task ToggleSleepAsync(Vocabulary v)
+    {
+        await VocabularyService.SetAsleepAsync(v.Id, !v.IsAsleep);
+        await LoadAsync();
+    }
+}

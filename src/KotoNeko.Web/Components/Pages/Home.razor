@@ -1,0 +1,126 @@
+@page "/"
+@inject DashboardService Dashboard
+
+<PageTitle>KotoNeko</PageTitle>
+
+@if (_dbError is not null)
+{
+    <div class="kn-panel">
+        <h2>Database not ready</h2>
+        <p>KotoNeko couldn't reach its database. Set a valid MySQL connection string and reload.</p>
+        <p class="kn-hint">Edit <code>appsettings.json</code> → <code>ConnectionStrings:KotoNeko</code>, or set the
+            <code>KOTONEKO_CONNECTION</code> environment variable. The schema is created automatically on startup.</p>
+        <pre style="background:#f6f6f6;padding:0.75rem;border-radius:4px;overflow:auto">@_dbError</pre>
+    </div>
+}
+else if (_summary is null)
+{
+    <p class="kn-empty">Loading…</p>
+}
+else
+{
+    <div class="kn-cta-row">
+        <a class="kn-cta kn-cta-lessons @(_summary.LessonsAvailable == 0 ? "kn-cta-disabled" : "")" href="/lessons">
+            <div class="kn-cta-count">@_summary.LessonsAvailable</div>
+            <div class="kn-cta-label">Lessons</div>
+        </a>
+        <a class="kn-cta kn-cta-reviews @(_summary.DueNow == 0 ? "kn-cta-disabled" : "")" href="/reviews">
+            <div class="kn-cta-count">@_summary.DueNow</div>
+            <div class="kn-cta-label">Reviews</div>
+        </a>
+    </div>
+
+    <div class="kn-panel">
+        <h2>SRS progress</h2>
+        <div class="kn-bands">
+            <div class="kn-band kn-band-apprentice">
+                <div class="kn-band-count">@_summary.BandCounts["Apprentice"]</div>
+                <div class="kn-band-name">Apprentice</div>
+            </div>
+            <div class="kn-band kn-band-guru">
+                <div class="kn-band-count">@_summary.BandCounts["Guru"]</div>
+                <div class="kn-band-name">Guru</div>
+            </div>
+            <div class="kn-band kn-band-master">
+                <div class="kn-band-count">@_summary.BandCounts["Master"]</div>
+                <div class="kn-band-name">Master</div>
+            </div>
+            <div class="kn-band kn-band-enlightened">
+                <div class="kn-band-count">@_summary.BandCounts["Enlightened"]</div>
+                <div class="kn-band-name">Enlightened</div>
+            </div>
+            <div class="kn-band kn-band-burned">
+                <div class="kn-band-count">@_summary.BandCounts["Burned"]</div>
+                <div class="kn-band-name">Burned</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kn-panel">
+        <h2>Next 24 hours</h2>
+        @if (_summary.Forecast.Count == 0)
+        {
+            <p class="kn-forecast-empty">No upcoming reviews in the next day.</p>
+        }
+        else
+        {
+            int max = _summary.Forecast.Max(f => f.Count);
+            <div class="kn-forecast">
+                @foreach (ForecastBucket bucket in _summary.Forecast)
+                {
+                    int height = max == 0 ? 0 : (int)(100.0 * bucket.Count / max);
+                    <div class="kn-forecast-bar"
+                         style="height:@(height)%"
+                         title="@bucket.Hour.ToLocalTime().ToString("ddd HH:00") — @bucket.Count review(s)"></div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="kn-panel">
+        <h2>Recently missed</h2>
+        @if (_summary.RecentlyMissed.Count == 0)
+        {
+            <p class="kn-empty">Nothing missed recently. 🎉</p>
+        }
+        else
+        {
+            <ul class="kn-missed-list">
+                @foreach (MissedItem item in _summary.RecentlyMissed)
+                {
+                    <li class="kn-missed-item">
+                        <span class="kn-missed-jp kn-jp">@item.Japanese</span>
+                        <span class="kn-missed-reading">@item.Reading</span>
+                        <span class="kn-missed-meaning">@item.Meaning</span>
+                        <span class="kn-missed-tag">@item.QuestionType</span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    <div class="kn-panel">
+        <h2>Library</h2>
+        <p style="color:#666">
+            @_summary.TotalItems total items · @_summary.AsleepItems asleep ·
+            <a href="/vocab">manage vocabulary</a>
+        </p>
+    </div>
+}
+
+@code {
+    private DashboardSummary? _summary;
+    private string? _dbError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _summary = await Dashboard.GetSummaryAsync(DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            _dbError = ex.Message;
+        }
+    }
+}

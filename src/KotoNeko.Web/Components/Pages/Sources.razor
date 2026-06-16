@@ -1,0 +1,132 @@
+@page "/sources"
+@inject SourceService SourceService
+
+<PageTitle>Sources · KotoNeko</PageTitle>
+
+<h1>Source materials</h1>
+<p style="color:#666">Sources populate the dropdown when adding vocabulary, e.g. <em>Tobira 2</em> or <em>Yotsuba-to</em>.</p>
+
+@if (_message is not null)
+{
+    <div class="kn-msg kn-msg-ok">@_message</div>
+}
+
+<div class="kn-panel">
+    <h2>@(_editing.Id == 0 ? "Add a source" : "Edit source")</h2>
+    <div class="kn-grid-2">
+        <div class="kn-form-row">
+            <label>Name</label>
+            <input class="kn-input" @bind="_editing.Name" placeholder="Tobira 2" />
+        </div>
+        <div class="kn-form-row">
+            <label>Kind</label>
+            <select class="kn-select" @bind="_editing.Kind">
+                @foreach (SourceKind kind in Enum.GetValues<SourceKind>())
+                {
+                    <option value="@kind">@kind</option>
+                }
+            </select>
+        </div>
+    </div>
+    <div class="kn-form-row">
+        <label>Notes (optional)</label>
+        <input class="kn-input" @bind="_editing.Notes" />
+    </div>
+    <div class="kn-toolbar">
+        <button class="kn-btn kn-btn-primary" @onclick="SaveAsync" disabled="@string.IsNullOrWhiteSpace(_editing.Name)">Save</button>
+        @if (_editing.Id != 0)
+        {
+            <button class="kn-btn" @onclick="ResetForm">Cancel</button>
+        }
+    </div>
+</div>
+
+<div class="kn-panel">
+    <h2>All sources</h2>
+    @if (_sources.Count == 0)
+    {
+        <p class="kn-empty">No sources yet.</p>
+    }
+    else
+    {
+        <table class="kn-table">
+            <thead>
+                <tr><th>Name</th><th>Kind</th><th>Notes</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (SourceMaterial s in _sources)
+                {
+                    <tr>
+                        <td>@s.Name</td>
+                        <td>@s.Kind</td>
+                        <td style="color:#888">@s.Notes</td>
+                        <td style="text-align:right">
+                            <button class="kn-btn kn-btn-sm" @onclick="() => Edit(s)">Edit</button>
+                            <button class="kn-btn kn-btn-sm kn-btn-danger" @onclick="() => DeleteAsync(s.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<SourceMaterial> _sources = new();
+    private SourceMaterial _editing = NewSource();
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _sources = await SourceService.GetAllAsync();
+    }
+
+    private static SourceMaterial NewSource() => new() { Kind = SourceKind.Other };
+
+    private void ResetForm()
+    {
+        _editing = NewSource();
+    }
+
+    private void Edit(SourceMaterial s)
+    {
+        _editing = new SourceMaterial { Id = s.Id, Name = s.Name, Kind = s.Kind, Notes = s.Notes, CreatedAt = s.CreatedAt };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Name))
+        {
+            return;
+        }
+
+        if (_editing.Id == 0)
+        {
+            await SourceService.CreateAsync(_editing.Name, _editing.Kind, _editing.Notes);
+            _message = $"Added \"{_editing.Name}\".";
+        }
+        else
+        {
+            await SourceService.UpdateAsync(_editing);
+            _message = $"Updated \"{_editing.Name}\".";
+        }
+
+        ResetForm();
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await SourceService.DeleteAsync(id);
+        if (_editing.Id == id)
+        {
+            ResetForm();
+        }
+        await LoadAsync();
+    }
+}

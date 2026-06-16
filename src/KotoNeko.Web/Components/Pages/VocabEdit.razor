@@ -1,0 +1,333 @@
+@page "/vocab/new"
+@page "/vocab/{Id:int}"
+@inject VocabularyService VocabularyService
+@inject SourceService SourceService
+@inject KotoNeko.Jisho.JishoClient Jisho
+@inject NavigationManager Nav
+
+<PageTitle>@(Id is null ? "Add" : "Edit") vocabulary · KotoNeko</PageTitle>
+
+<h1>@(Id is null ? "Add vocabulary" : "Edit vocabulary")</h1>
+
+@if (_message is not null)
+{
+    <div class="kn-msg kn-msg-ok">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="kn-msg kn-msg-err">@_error</div>
+}
+
+<div class="kn-panel">
+    <div class="kn-grid-2">
+        <div class="kn-form-row">
+            <label>Japanese writing</label>
+            <input class="kn-input kn-jp" @bind="_vocab.Japanese" placeholder="新聞 (use your IME for kanji)" />
+            <div class="kn-hint">The written form, including kanji. Type via your OS IME or paste.</div>
+        </div>
+        <div class="kn-form-row">
+            <label>Reading (kana)</label>
+            <KanaInput Value="_vocab.Reading" ValueChanged="@(v => _vocab.Reading = v)" CssClass="kn-input kn-jp" Placeholder="しんぶん (type romaji)" />
+            <div class="kn-hint">Romaji is converted to hiragana as you type.</div>
+        </div>
+    </div>
+
+    <div class="kn-form-row">
+        <label>English meanings</label>
+        <div class="kn-hint" style="margin-top:0">Any one of these counts as correct in a review. The first is the primary (shown in lists).</div>
+        @for (int i = 0; i < _meanings.Count; i++)
+        {
+            int index = i;
+            <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.4rem">
+                <input class="kn-input" @bind="_meanings[index].Text" placeholder="@(index == 0 ? "newspaper (primary)" : "another accepted meaning")" />
+                <button class="kn-btn kn-btn-sm kn-btn-danger" type="button" @onclick="() => RemoveMeaning(index)" disabled="@(_meanings.Count == 1)" title="Remove">✕</button>
+            </div>
+        }
+        <button class="kn-btn kn-btn-sm" type="button" style="margin-top:0.5rem" @onclick="AddMeaning">+ Add meaning</button>
+    </div>
+
+    <div class="kn-form-row">
+        <label>Alternate readings (optional, ; separated)</label>
+        <input class="kn-input" @bind="_vocab.AlternateReadings" />
+    </div>
+
+    <div class="kn-form-row">
+        <label>Context sentence (optional)</label>
+        <textarea class="kn-textarea kn-jp" @bind="_vocab.ContextSentence" placeholder="毎朝新聞を読みます。"></textarea>
+    </div>
+
+    <div class="kn-form-row">
+        <label>Memo (optional)</label>
+        <textarea class="kn-textarea" @bind="_vocab.Memo"></textarea>
+    </div>
+
+    <div class="kn-grid-2">
+        <div class="kn-form-row">
+            <label>Source material</label>
+            <select class="kn-select" @bind="_vocab.SourceMaterialId">
+                <option value="">— none —</option>
+                @foreach (SourceMaterial s in _sources)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="kn-form-row">
+            <label>Verb class</label>
+            <select class="kn-select" @bind="_vocab.VerbClass" @bind:after="OnVerbClassChanged">
+                @foreach (VerbClass vc in Enum.GetValues<VerbClass>())
+                {
+                    <option value="@vc">@VerbClassLabel(vc)</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="kn-form-row">
+        <label style="display:flex;align-items:center;gap:0.4rem">
+            <input type="checkbox" @bind="_vocab.IsAsleep" /> Asleep (excluded from lessons and reviews)
+        </label>
+    </div>
+
+    <div class="kn-toolbar">
+        <button class="kn-btn kn-btn-accent" @onclick="FetchFromJishoAsync" disabled="@_busy">
+            @(_busy ? "Fetching…" : "⤓ Fetch from jisho")
+        </button>
+        <span class="kn-hint">Detects reading + verb class (and fills meaning if blank), then computes conjugations.</span>
+    </div>
+</div>
+
+@if (_vocab.VerbClass != VerbClass.None)
+{
+    <div class="kn-panel">
+        <h2>Conjugations</h2>
+        <div class="kn-toolbar">
+            <button class="kn-btn" @onclick="RegenerateConjugations">↻ Recompute from reading</button>
+            <span class="kn-hint">Computed locally. Edit any cell to override.</span>
+        </div>
+
+        @if (_conjugations.Count == 0)
+        {
+            <p class="kn-empty">No conjugations yet — set the reading and recompute.</p>
+        }
+        else
+        {
+            <div class="kn-conj-grid">
+                @foreach (EditableConjugation c in _conjugations)
+                {
+                    <div class="kn-conj-cell kn-form-row">
+                        <label>@ConjugationLabels.Describe(c.Form, c.Polarity)</label>
+                        <input class="kn-input kn-jp" @bind="c.Kana" />
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+<div class="kn-toolbar">
+    <button class="kn-btn kn-btn-primary" @onclick="SaveAsync" disabled="@(!CanSave || _busy)">Save</button>
+    <a class="kn-btn" href="/vocab">Cancel</a>
+    @if (Id is not null)
+    {
+        <button class="kn-btn kn-btn-danger" @onclick="DeleteAsync">Delete</button>
+    }
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private Vocabulary _vocab = new();
+    private List<SourceMaterial> _sources = new();
+    private List<EditableConjugation> _conjugations = new();
+    private List<MeaningRow> _meanings = new() { new MeaningRow() };
+    private string? _message;
+    private string? _error;
+    private bool _busy;
+
+    private bool CanSave =>
+        !string.IsNullOrWhiteSpace(_vocab.Japanese)
+        && !string.IsNullOrWhiteSpace(_vocab.Reading)
+        && _meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _sources = await SourceService.GetAllAsync();
+
+        if (Id is int id)
+        {
+            Vocabulary? existing = await VocabularyService.GetAsync(id);
+            if (existing is null)
+            {
+                _error = "That vocabulary item no longer exists.";
+                return;
+            }
+
+            _vocab = existing;
+            _conjugations = existing.Conjugations
+                .Select(c => new EditableConjugation { Form = c.Form, Polarity = c.Polarity, Kana = c.ExpectedKana })
+                .ToList();
+            _meanings = existing.Meanings
+                .OrderBy(m => m.SortOrder)
+                .Select(m => new MeaningRow { Text = m.Text })
+                .ToList();
+            if (_meanings.Count == 0)
+            {
+                _meanings.Add(new MeaningRow());
+            }
+        }
+        else
+        {
+            _vocab = new Vocabulary();
+            _conjugations = new();
+            _meanings = new() { new MeaningRow() };
+        }
+    }
+
+    private void AddMeaning()
+    {
+        _meanings.Add(new MeaningRow());
+    }
+
+    private void RemoveMeaning(int index)
+    {
+        if (_meanings.Count > 1)
+        {
+            _meanings.RemoveAt(index);
+        }
+    }
+
+    private void OnVerbClassChanged()
+    {
+        if (_vocab.VerbClass != VerbClass.None && _conjugations.Count == 0)
+        {
+            RegenerateConjugations();
+        }
+    }
+
+    private void RegenerateConjugations()
+    {
+        if (_vocab.VerbClass == VerbClass.None || string.IsNullOrWhiteSpace(_vocab.Reading))
+        {
+            return;
+        }
+
+        IReadOnlyList<ConjugationResult> generated = ConjugationEngine.Generate(_vocab.Reading, _vocab.VerbClass);
+        _conjugations = generated
+            .Select(g => new EditableConjugation { Form = g.Form, Polarity = g.Polarity, Kana = g.Kana })
+            .ToList();
+    }
+
+    private async Task FetchFromJishoAsync()
+    {
+        _error = null;
+        _message = null;
+
+        if (string.IsNullOrWhiteSpace(_vocab.Japanese))
+        {
+            _error = "Enter the Japanese writing first.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            KotoNeko.Jisho.JishoLookupResult result = await Jisho.LookupAsync(_vocab.Japanese);
+            if (result.Error is not null)
+            {
+                _error = $"jisho lookup failed: {result.Error}";
+                return;
+            }
+
+            if (!result.Found)
+            {
+                _error = "jisho didn't find that word. Fill the fields manually.";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.Reading))
+            {
+                _vocab.Reading = result.Reading;
+            }
+
+            // Fill meanings as separate rows if the user hasn't entered any yet.
+            bool hasMeanings = _meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
+            if (!hasMeanings && result.Meanings.Count > 0)
+            {
+                _meanings = result.Meanings.Select(m => new MeaningRow { Text = m }).ToList();
+            }
+
+            _vocab.VerbClass = result.VerbClass;
+
+            if (result.VerbClass != VerbClass.None)
+            {
+                RegenerateConjugations();
+                _message = $"Detected {VerbClassLabel(result.VerbClass)} — reading and conjugations filled in.";
+            }
+            else
+            {
+                _message = "Reading filled in. (Not detected as a verb.)";
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (!CanSave)
+        {
+            _error = "Japanese, reading, and at least one meaning are required.";
+            return;
+        }
+
+        // The service trims, de-duplicates, drops blanks, and assigns sort order.
+        _vocab.Meanings = _meanings
+            .Select(m => new VocabularyMeaning { Text = m.Text })
+            .ToList();
+
+        List<ConjugationResult> conjugations = _vocab.VerbClass == VerbClass.None
+            ? new()
+            : _conjugations
+                .Where(c => !string.IsNullOrWhiteSpace(c.Kana))
+                .Select(c => new ConjugationResult(c.Form, c.Polarity, c.Kana.Trim()))
+                .ToList();
+
+        await VocabularyService.SaveAsync(_vocab, conjugations);
+        Nav.NavigateTo("/vocab");
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is int id)
+        {
+            await VocabularyService.DeleteAsync(id);
+            Nav.NavigateTo("/vocab");
+        }
+    }
+
+    private static string VerbClassLabel(VerbClass vc) => vc switch
+    {
+        VerbClass.None => "Not a verb",
+        VerbClass.Godan => "Godan (う-verb)",
+        VerbClass.Ichidan => "Ichidan (る-verb)",
+        VerbClass.Suru => "する verb",
+        VerbClass.Kuru => "来る verb",
+        _ => vc.ToString(),
+    };
+
+    private sealed class EditableConjugation
+    {
+        public ConjugationForm Form { get; set; }
+        public Polarity Polarity { get; set; }
+        public string Kana { get; set; } = string.Empty;
+    }
+
+    private sealed class MeaningRow
+    {
+        public string Text { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,38 @@
+@page "/lessons"
+@inject ReviewService ReviewService
+@inject NavigationManager Nav
+
+@if (_loading)
+{
+    <p class="kn-empty">Loading lessons…</p>
+}
+else if (_session is null)
+{
+    <div class="kn-session-done">
+        <div class="big">📚</div>
+        <h1>No lessons available</h1>
+        <p>Every item has been learned. Add more vocabulary to keep going.</p>
+        <a class="kn-btn kn-btn-primary" href="/vocab">Add vocabulary</a>
+    </div>
+}
+else
+{
+    <SessionRunner Session="_session" OnExit="GoHome" />
+}
+
+@code {
+    private ReviewSession? _session;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Teach a handful at a time, like WaniKani's lesson batches.
+        _session = await ReviewService.BuildLessonSessionAsync(DateTime.UtcNow, max: 5);
+        _loading = false;
+    }
+
+    private void GoHome()
+    {
+        Nav.NavigateTo("/");
+    }
+}

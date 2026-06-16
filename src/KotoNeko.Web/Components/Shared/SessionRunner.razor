@@ -1,0 +1,304 @@
+@inject ReviewService ReviewService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (Session is null)
+{
+    <div class="kn-session-done">
+        <p class="kn-empty">Nothing to do here right now.</p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+    </div>
+}
+else if (Session.IsComplete)
+{
+    <div class="kn-session-done">
+        <div class="big">🎉</div>
+        <h1>@(Session.Kind == SessionKind.Lesson ? "Lessons complete!" : "Reviews complete!")</h1>
+        <p>
+            @Session.TotalCards item@(Session.TotalCards == 1 ? "" : "s") finished
+            @if (Session.Kind == SessionKind.Review)
+            {
+                <span>— <span style="color:var(--kn-correct-dark);font-weight:600">@Session.CorrectCount correct</span>,
+                <span style="color:var(--kn-incorrect-dark);font-weight:600">@Session.IncorrectCount with mistakes</span></span>
+            }
+        </p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+    </div>
+}
+else
+{
+    ReviewCard card = Session.CurrentCard!;
+    ReviewQuestion q = Session.CurrentQuestion!;
+
+    <div class="kn-quiz">
+        <div class="kn-quiz-header">
+            <button class="kn-quiz-exit" title="End session" @onclick="ExitAsync">✕</button>
+            <div class="kn-quiz-progress">
+                <div class="kn-quiz-progress-fill" style="width:@(ProgressPercent)%"></div>
+            </div>
+            <div class="kn-quiz-counts">
+                <span class="ok">@Session.FinishedCards</span> / @Session.TotalCards done
+            </div>
+        </div>
+
+        <div class="kn-prompt @PromptClass(q)">
+            <div class="kn-prompt-word">@card.Vocabulary.Japanese</div>
+            <div class="kn-prompt-type">
+                @if (q.Type == QuestionType.Conjugation)
+                {
+                    <span>conjugation: <span class="strong">@q.Prompt</span></span>
+                }
+                else
+                {
+                    <span class="strong">@q.Prompt</span>
+                }
+            </div>
+            @if (q.Type == QuestionType.Conjugation)
+            {
+                <div class="kn-prompt-conj-hint">Type the @q.Prompt.ToLowerInvariant() form in kana</div>
+            }
+        </div>
+
+        <div class="kn-answer @AnswerStateClass @(_shake ? "kn-shake" : "")">
+            <input @ref="_inputRef"
+                   type="text"
+                   value="@_input"
+                   placeholder="@Placeholder(q)"
+                   autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                   readonly="@(_mode == Mode.ShowingResult)"
+                   @oninput="OnInput"
+                   @onkeydown="OnKeyDown" />
+        </div>
+
+        <div class="kn-answer-footer">
+            <div class="kn-feedback">
+                @if (_mode == Mode.ShowingResult)
+                {
+                    if (_lastJudgment == AnswerJudgment.Correct)
+                    {
+                        <span class="answer-ok">✓ Correct</span>
+                    }
+                    else
+                    {
+                        <span class="answer-was">✗ Answer: @_lastCorrectAnswer</span>
+                    }
+                    <span style="color:#aaa"> &nbsp;·&nbsp; press Enter to continue</span>
+                }
+                else if (_closeHint is not null)
+                {
+                    <span style="color:#c98a00">@_closeHint</span>
+                }
+            </div>
+            <button class="kn-undo-btn" disabled="@(!Session.CanUndo)" @onclick="UndoAsync" title="Undo last answer (fix a typo)">
+                ↶ Undo
+            </button>
+        </div>
+
+        @if (_mode == Mode.ShowingResult)
+        {
+            <div class="kn-extra">
+                <div class="kn-extra-row"><span class="kn-extra-label">Word</span> <span class="kn-jp">@card.Vocabulary.Japanese</span> 「@card.Vocabulary.Reading」 — @card.Vocabulary.MeaningsDisplay</div>
+                @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence))
+                {
+                    <div class="kn-extra-row"><span class="kn-extra-label">Context</span> @card.Vocabulary.ContextSentence</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(card.Vocabulary.Memo))
+                {
+                    <div class="kn-extra-row"><span class="kn-extra-label">Memo</span> @card.Vocabulary.Memo</div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public ReviewSession? Session { get; set; }
+
+    /// <summary>Invoked when the user exits or the session completes (after persist).</summary>
+    [Parameter] public EventCallback OnExit { get; set; }
+
+    private enum Mode { AwaitingInput, ShowingResult }
+
+    private Mode _mode = Mode.AwaitingInput;
+    private string _input = string.Empty;
+    private bool _shake;
+    private string? _closeHint;
+    private AnswerJudgment _lastJudgment;
+    private string? _lastCorrectAnswer;
+    private bool _focusQueued;
+    private bool _persisted;
+
+    private ElementReference _inputRef;
+    private readonly Stack<string> _typedHistory = new();
+
+    private int ProgressPercent =>
+        Session is null || Session.TotalCards == 0
+            ? 0
+            : (int)(100.0 * Session.FinishedCards / Session.TotalCards);
+
+    protected override void OnParametersSet()
+    {
+        if (Session is not null && Session.CurrentQuestion is not null)
+        {
+            _focusQueued = true;
+        }
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        if (_mode == Mode.ShowingResult)
+        {
+            return;
+        }
+
+        string raw = e.Value?.ToString() ?? string.Empty;
+        ReviewQuestion? q = Session?.CurrentQuestion;
+        _input = q is not null && IsKana(q.Type) ? RomajiConverter.ToHiragana(raw) : raw;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter")
+        {
+            return;
+        }
+
+        if (_mode == Mode.ShowingResult)
+        {
+            Advance();
+            return;
+        }
+
+        await SubmitAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (Session is null || Session.CurrentQuestion is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_input))
+        {
+            await ShakeAsync("Type an answer.");
+            return;
+        }
+
+        SubmitOutcome outcome = Session.Submit(_input);
+
+        if (outcome.Judgment == AnswerJudgment.CloseTryAgain)
+        {
+            await ShakeAsync("Hmm, not quite — check your input and try again.");
+            return;
+        }
+
+        // Committed answer: remember the typed text so Undo can restore it.
+        _typedHistory.Push(_input);
+        _closeHint = null;
+        _lastJudgment = outcome.Judgment;
+        _lastCorrectAnswer = outcome.CorrectAnswer;
+        _mode = Mode.ShowingResult;
+    }
+
+    private void Advance()
+    {
+        _mode = Mode.AwaitingInput;
+        _input = string.Empty;
+        _closeHint = null;
+        _focusQueued = true;
+    }
+
+    private async Task UndoAsync()
+    {
+        if (Session is null || !Session.CanUndo)
+        {
+            return;
+        }
+
+        Session.Undo();
+        string restored = _typedHistory.Count > 0 ? _typedHistory.Pop() : string.Empty;
+        _input = restored;
+        _mode = Mode.AwaitingInput;
+        _closeHint = "Undone — fix your answer and submit again.";
+        _focusQueued = true;
+        await Task.CompletedTask;
+    }
+
+    private async Task ShakeAsync(string hint)
+    {
+        _closeHint = hint;
+        _shake = true;
+        StateHasChanged();
+        await Task.Delay(360);
+        _shake = false;
+    }
+
+    private async Task ExitAsync()
+    {
+        await PersistAsync();
+        await OnExit.InvokeAsync();
+    }
+
+    private async Task PersistAsync()
+    {
+        if (_persisted || Session is null)
+        {
+            return;
+        }
+
+        _persisted = true;
+        await ReviewService.PersistAsync(Session.BuildPendingResults());
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Persist automatically once the session is finished.
+        if (Session is not null && Session.IsComplete && !_persisted)
+        {
+            await PersistAsync();
+        }
+
+        if (_focusQueued)
+        {
+            _focusQueued = false;
+            try
+            {
+                await JS.InvokeVoidAsync("kotoneko.focusSelect", _inputRef);
+            }
+            catch (JSException)
+            {
+                // ignore focus failures
+            }
+        }
+    }
+
+    private static bool IsKana(QuestionType type) =>
+        type is QuestionType.Reading or QuestionType.Conjugation;
+
+    private static string PromptClass(ReviewQuestion q) => q.Type switch
+    {
+        QuestionType.Meaning => "kn-prompt-meaning",
+        QuestionType.Reading => "kn-prompt-reading",
+        QuestionType.Conjugation => "kn-prompt-conjugation",
+        _ => "kn-prompt-vocab",
+    };
+
+    private string AnswerStateClass => _mode == Mode.ShowingResult
+        ? (_lastJudgment == AnswerJudgment.Correct ? "correct" : "incorrect")
+        : string.Empty;
+
+    private static string Placeholder(ReviewQuestion q) => q.Type switch
+    {
+        QuestionType.Meaning => "Your answer (English)",
+        QuestionType.Reading => "Reading (type romaji)",
+        QuestionType.Conjugation => "Conjugated form (type romaji)",
+        _ => "Your answer",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        // Persist progress if the component is torn down mid-session.
+        await PersistAsync();
+    }
+}
