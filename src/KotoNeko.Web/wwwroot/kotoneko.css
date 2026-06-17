@@ -481,7 +481,10 @@ h1, h2, h3 {
     background: #fafafa;
 }
 
-.kn-jp { font-size: 1.15rem; }
+.kn-jp { 
+    margin-right: 8px;
+    font-size: 1.15rem; 
+}
 
 .kn-asleep td { opacity: 0.5; }
 
@@ -563,7 +566,7 @@ h1, h2, h3 {
     text-transform: uppercase;
     letter-spacing: 0.03em;
     padding: 0.15rem 0.5rem;
-    border-radius: 10px;
+    border-radius: 5px;
     color: #fff;
 }
 

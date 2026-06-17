@@ -27,8 +27,8 @@ else if (Session.IsComplete)
 }
 else
 {
-    ReviewCard card = Session.CurrentCard!;
-    ReviewQuestion q = Session.CurrentQuestion!;
+    ReviewCard card = _displayCard;
+    ReviewQuestion q = _displayQuestion;
 
     <div class="kn-quiz">
         <div class="kn-quiz-header">
@@ -121,13 +121,17 @@ else
 
     private Mode _mode = Mode.AwaitingInput;
     private string _input = string.Empty;
+    private string answer = string.Empty;
+    private bool needsClear = false;
     private bool _shake;
     private string? _closeHint;
     private AnswerJudgment _lastJudgment;
     private string? _lastCorrectAnswer;
     private bool _focusQueued;
     private bool _persisted;
-
+    private ReviewCard? _displayCard;
+    private ReviewQuestion? _displayQuestion;
+    
     private ElementReference _inputRef;
     private DotNetObjectReference<SessionRunner>? _dotNetRef;
     private bool _kanaAttached;
@@ -142,6 +146,8 @@ else
     {
         if (Session is not null && Session.CurrentQuestion is not null)
         {
+            _displayCard = Session.CurrentCard;
+            _displayQuestion = Session.CurrentQuestion;
             _focusQueued = true;
         }
     }
@@ -156,7 +162,7 @@ else
     {
         if (_mode != Mode.ShowingResult)
         {
-            _input = converted;
+            answer = converted;
         }
         return Task.CompletedTask;
     }
@@ -184,7 +190,7 @@ else
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_input))
+        if (string.IsNullOrWhiteSpace(answer))
         {
             await ShakeAsync("Type an answer.");
             return;
@@ -194,9 +200,9 @@ else
         // the authoritative grading input (idempotent on kana, and a safety net
         // against any client/server drift).
         ReviewQuestion question = Session.CurrentQuestion;
-        _input = IsKana(question.Type) ? RomajiConverter.ToHiragana(_input) : _input;
+        // _input = IsKana(question.Type) ? RomajiConverter.ToHiragana(_input) : _input;
 
-        SubmitOutcome outcome = Session.Submit(_input);
+        SubmitOutcome outcome = Session.Submit(answer);
 
         if (outcome.Judgment == AnswerJudgment.CloseTryAgain)
         {
@@ -205,7 +211,7 @@ else
         }
 
         // Committed answer: remember the typed text so Undo can restore it.
-        _typedHistory.Push(_input);
+        _typedHistory.Push(answer);
         _closeHint = null;
         _lastJudgment = outcome.Judgment;
         _lastCorrectAnswer = outcome.CorrectAnswer;
@@ -216,8 +222,12 @@ else
     {
         _mode = Mode.AwaitingInput;
         _input = string.Empty;
+        answer = string.Empty;
         _closeHint = null;
         _focusQueued = true;
+        _displayCard = Session?.CurrentCard;
+        _displayQuestion = Session?.CurrentQuestion;
+        needsClear = true;
     }
 
     private async Task UndoAsync()
@@ -265,38 +275,38 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Persist automatically once the session is finished.
-        if (Session is not null && Session.IsComplete && !_persisted)
-        {
+        if (Session is not null && Session.IsComplete && !_persisted) {
             await PersistAsync();
         }
 
         // Wire the answer box up to the client-side kana converter once it exists.
         // The same <input> element is reused across questions; the per-question
         // data-kn-convert attribute decides whether to convert.
-        if (!_kanaAttached && Session?.CurrentQuestion is not null)
-        {
+        if (!_kanaAttached && Session?.CurrentQuestion is not null) {
             _dotNetRef ??= DotNetObjectReference.Create(this);
-            try
-            {
+            try {
                 await JS.InvokeVoidAsync("kotoneko.kanaInput.attach", _inputRef, _dotNetRef,
                     new { interceptKeys = false });
                 _kanaAttached = true;
-            }
-            catch (JSException)
-            {
+            } catch (JSException) {
                 // ignore; will retry on a later render
             }
         }
-
-        if (_focusQueued)
-        {
-            _focusQueued = false;
-            try
-            {
-                await JS.InvokeVoidAsync("kotoneko.focusSelect", _inputRef);
+        
+        if (needsClear) {
+            needsClear = false;
+            try {
+                // Force the DOM to actually be empty
+                await JS.InvokeVoidAsync("kotoneko.kanaInput.setValue", _inputRef, "");
             }
-            catch (JSException)
-            {
+            catch { /* ignore */ }
+        }
+        
+        if (_focusQueued) {
+            _focusQueued = false;
+            try {
+                await JS.InvokeVoidAsync("kotoneko.focusSelect", _inputRef);
+            } catch (JSException) {
                 // ignore focus failures
             }
         }
@@ -319,10 +329,10 @@ else
 
     private static string Placeholder(ReviewQuestion q) => q.Type switch
     {
-        QuestionType.Meaning => "Your answer (English)",
-        QuestionType.Reading => "Reading (type romaji)",
-        QuestionType.Conjugation => "Conjugated form (type romaji)",
-        _ => "Your answer",
+        QuestionType.Meaning => "Meaning",
+        QuestionType.Reading => "Reading",
+        QuestionType.Conjugation => "Conjugated form",
+        _ => "",
     };
 
     public async ValueTask DisposeAsync()
