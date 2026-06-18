@@ -105,11 +105,14 @@ h1, h2, h3 {
     flex: 1;
 }
 
-/* ===== Page container ===== */
 .kn-page {
     max-width: 1080px;
     margin: 0 auto;
     padding: 1.5rem 1rem 4rem;
+}
+
+.kn-page:has(.kn-wide-view) {
+    max-width: 1400px;
 }
 
 .kn-panel {
@@ -244,23 +247,36 @@ h1, h2, h3 {
     padding: 0.1rem 0.4rem;
 }
 
-.kn-forecast {
+.kn-sessions-list {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+}
+
+.kn-session-row {
     display: flex;
-    gap: 2px;
-    align-items: flex-end;
-    height: 90px;
-    margin-top: 0.5rem;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--kn-border);
 }
 
-.kn-forecast-bar {
-    flex: 1;
-    background: var(--kn-master);
-    border-radius: 2px 2px 0 0;
-    min-height: 2px;
-    position: relative;
+.kn-session-row:last-child {
+    border-bottom: none;
 }
 
-.kn-forecast-empty {
+.kn-session-time {
+    font-variant-numeric: tabular-nums;
+}
+
+.kn-session-count {
+    color: var(--kn-muted);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.kn-sessions-empty {
     color: var(--kn-muted);
     font-style: italic;
 }
@@ -316,9 +332,17 @@ h1, h2, h3 {
     border: none;
 }
 
+.kn-prompt-main {
+    flex: 1; /* This pushes the word to the middle */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: 100%;
+}
+
 /* The big prompt area, coloured by question type. */
 .kn-prompt {
-    flex: 1;
+    flex: 1.5;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -326,6 +350,7 @@ h1, h2, h3 {
     color: #fff;
     text-align: center;
     padding: 1rem;
+    min-height: 300px;
 }
 
 .kn-prompt-vocab { background: var(--kn-vocab); }
@@ -444,8 +469,10 @@ h1, h2, h3 {
 
 /* extra info revealed after answering (memo, context, alternates) */
 .kn-extra {
-    background: #fff;
-    border-top: 1px solid var(--kn-border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
     padding: 0.75rem 1rem;
     font-size: 0.9rem;
     color: #555;
@@ -484,6 +511,12 @@ h1, h2, h3 {
 .kn-jp { 
     margin-right: 8px;
     font-size: 1.15rem; 
+}
+
+.kn-jp-reading {
+    margin-right: 8px;
+    font-size: 1.15rem;
+    color: var(--kn-panel);
 }
 
 .kn-asleep td { opacity: 0.5; }

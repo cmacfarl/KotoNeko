@@ -150,14 +150,20 @@ public class ReviewService
                 ExpectedPrimary = primaryMeaning,
                 ExpectedAlternates = alternateMeanings,
             },
-            new ReviewQuestion
+        };
+
+        // The reading is only quizzed for kanji words whose reading we're actually
+        // learning. Kana-only words (no kanji) and furigana items skip it.
+        if (v.AsksReading)
+        {
+            questions.Add(new ReviewQuestion
             {
                 Type = QuestionType.Reading,
                 Prompt = "Reading",
                 ExpectedPrimary = v.Reading,
                 ExpectedAlternates = v.AlternateReadings,
-            },
-        };
+            });
+        }
 
         if (v.VerbClass != VerbClass.None && v.Conjugations.Count > 0)
         {

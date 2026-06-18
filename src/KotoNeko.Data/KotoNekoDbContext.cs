@@ -42,6 +42,9 @@ public class KotoNekoDbContext : DbContext
             entity.Ignore(e => e.IsVerb);
             entity.Ignore(e => e.PrimaryMeaning);
             entity.Ignore(e => e.MeaningsDisplay);
+            entity.Ignore(e => e.HasKanji);
+            entity.Ignore(e => e.ShowsFurigana);
+            entity.Ignore(e => e.AsksReading);
 
             entity.HasMany(e => e.Meanings)
                 .WithOne(m => m.Vocabulary)

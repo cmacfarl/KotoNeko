@@ -39,8 +39,36 @@ public class Vocabulary
     /// <summary>The verb class. <see cref="VerbClass.None"/> means it is not a verb.</summary>
     public VerbClass VerbClass { get; set; } = VerbClass.None;
 
+    /// <summary>
+    /// When true, furigana (the reading) is shown above the writing during lessons
+    /// and reviews. These items are not being learned for their kanji reading, so
+    /// the reading question is not asked. Defaults to on for new items.
+    /// </summary>
+    public bool DisplayFurigana { get; set; } = true;
+
     /// <summary>Convenience flag: true when this item conjugates.</summary>
     public bool IsVerb => VerbClass != VerbClass.None;
+
+    /// <summary>True when the writing contains at least one kanji character.</summary>
+    public bool HasKanji => Japanese.Any(IsKanji);
+
+    /// <summary>
+    /// Whether furigana should be rendered above the writing in a session: only
+    /// when the item opts in and actually has kanji to annotate.
+    /// </summary>
+    public bool ShowsFurigana => DisplayFurigana && HasKanji;
+
+    /// <summary>
+    /// Whether the reading should be quizzed. The reading question is skipped when
+    /// the word has no kanji (the writing IS the reading) or when furigana is shown
+    /// (we are not learning the kanji reading for this item).
+    /// </summary>
+    public bool AsksReading => HasKanji && !DisplayFurigana;
+
+    private static bool IsKanji(char c) =>
+        (c >= '一' && c <= '鿿')    // CJK Unified Ideographs
+        || (c >= '㐀' && c <= '䶿')  // CJK Unified Ideographs Extension A
+        || c == '々';                    // 々 kanji iteration mark
 
     /// <summary>
     /// When true the item is "asleep": excluded from lessons and reviews entirely.

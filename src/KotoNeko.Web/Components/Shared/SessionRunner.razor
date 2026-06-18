@@ -42,23 +42,56 @@ else
         </div>
 
         <div class="kn-prompt @PromptClass(q)">
-            <div class="kn-prompt-word">@card.Vocabulary.Japanese</div>
-            <div class="kn-prompt-type">
-                @if (q.Type == QuestionType.Conjugation)
-                {
-                    <span>conjugation: <span class="strong">@q.Prompt</span></span>
-                }
-                else
-                {
+            <div class="kn-prompt-main">
+                <div class="kn-prompt-word">
+                    @if (card.Vocabulary.ShowsFurigana) {
+                        <ruby>@card.Vocabulary.Japanese<rt>@card.Vocabulary.Reading</rt></ruby>
+                    } else {
+                        @card.Vocabulary.Japanese
+                    }
+                </div>
+                <div class="kn-prompt-type">
                     <span class="strong">@q.Prompt</span>
-                }
+                </div>
             </div>
-            @if (q.Type == QuestionType.Conjugation)
-            {
-                <div class="kn-prompt-conj-hint">Type the @q.Prompt.ToLowerInvariant() form in kana</div>
+            
+            @if (_mode == Mode.ShowingResult) {
+                <div class="kn-extra">
+                    @if (q.Type == QuestionType.Reading) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@card.Vocabulary.Reading</span></div>
+                    } else if (q.Type == QuestionType.Conjugation) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@_lastCorrectAnswer</span></div>
+                    } else if (q.Type == QuestionType.Meaning) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@card.Vocabulary.MeaningsDisplay</span></div>
+                    }
+                    
+                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence)) {
+                        <div class="kn-extra-row"><span class="kn-extra-label">Context</span> @card.Vocabulary.ContextSentence</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.Memo)) {
+                        <div class="kn-extra-row"><span class="kn-extra-label">Memo</span> @card.Vocabulary.Memo</div>
+                    }
+                </div>
+            } else {
+                <div class="kn-extra">
+                    @if (q.Type == QuestionType.Reading) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
+                    } else if (q.Type == QuestionType.Conjugation) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
+                    } else if (q.Type == QuestionType.Meaning) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
+                    }
+                    
+                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence)) {
+                        <div class="kn-extra-row"><span class="kn-extra-label">Context</span></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.Memo)) {
+                        <div class="kn-extra-row"><span class="kn-extra-label">Memo</span></div>
+                    }
+                </div>
             }
         </div>
-
+        
         <div class="kn-answer @AnswerStateClass @(_shake ? "kn-shake" : "")">
             <input @ref="_inputRef"
                    type="text"
@@ -71,43 +104,11 @@ else
         </div>
 
         <div class="kn-answer-footer">
-            <div class="kn-feedback">
-                @if (_mode == Mode.ShowingResult)
-                {
-                    if (_lastJudgment == AnswerJudgment.Correct)
-                    {
-                        <span class="answer-ok">✓ Correct</span>
-                    }
-                    else
-                    {
-                        <span class="answer-was">✗ Answer: @_lastCorrectAnswer</span>
-                    }
-                    <span style="color:#aaa"> &nbsp;·&nbsp; press Enter to continue</span>
-                }
-                else if (_closeHint is not null)
-                {
-                    <span style="color:#c98a00">@_closeHint</span>
-                }
-            </div>
             <button class="kn-undo-btn" disabled="@(!Session.CanUndo)" @onclick="UndoAsync" title="Undo last answer (fix a typo)">
                 ↶ Undo
             </button>
         </div>
 
-        @if (_mode == Mode.ShowingResult)
-        {
-            <div class="kn-extra">
-                <div class="kn-extra-row"><span class="kn-extra-label">Word</span> <span class="kn-jp">@card.Vocabulary.Japanese</span> 「@card.Vocabulary.Reading」 — @card.Vocabulary.MeaningsDisplay</div>
-                @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence))
-                {
-                    <div class="kn-extra-row"><span class="kn-extra-label">Context</span> @card.Vocabulary.ContextSentence</div>
-                }
-                @if (!string.IsNullOrWhiteSpace(card.Vocabulary.Memo))
-                {
-                    <div class="kn-extra-row"><span class="kn-extra-label">Memo</span> @card.Vocabulary.Memo</div>
-                }
-            </div>
-        }
     </div>
 }
 

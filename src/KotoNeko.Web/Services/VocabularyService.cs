@@ -82,6 +82,7 @@ public class VocabularyService
         entity.ContextSentence = string.IsNullOrWhiteSpace(input.ContextSentence) ? null : input.ContextSentence.Trim();
         entity.Memo = string.IsNullOrWhiteSpace(input.Memo) ? null : input.Memo.Trim();
         entity.VerbClass = input.VerbClass;
+        entity.DisplayFurigana = input.DisplayFurigana;
         entity.IsAsleep = input.IsAsleep;
         entity.SourceMaterialId = input.SourceMaterialId;
 

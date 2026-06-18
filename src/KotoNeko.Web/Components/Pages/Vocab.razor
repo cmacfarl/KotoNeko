@@ -20,56 +20,58 @@
 }
 else
 {
+    <div class="kn-wide-view">
     <div class="kn-panel">
         <table class="kn-table">
             <thead>
-                <tr>
-                    <th>Word</th>
-                    <th>Reading</th>
-                    <th>Meaning</th>
-                    <th>Source</th>
-                    <th>Stage</th>
-                    <th></th>
-                </tr>
+            <tr>
+                <th>Word</th>
+                <th>Reading</th>
+                <th>Meaning</th>
+                <th>Source</th>
+                <th>Stage</th>
+                <th></th>
+            </tr>
             </thead>
             <tbody>
-                @foreach (Vocabulary v in _items)
-                {
-                    <tr class="@(v.IsAsleep ? "kn-asleep" : "")">
-                        <td>
-                            <span class="kn-jp">@v.Japanese</span>
-                            @if (v.IsVerb)
-                            {
-                                <span class="kn-pill kn-pill-verb">@v.VerbClass</span>
-                            }
-                            @if (v.IsAsleep)
-                            {
-                                <span class="kn-pill kn-pill-asleep">asleep</span>
-                            }
-                        </td>
-                        <td>@v.Reading</td>
-                        <td>@v.MeaningsDisplay</td>
-                        <td style="color:#888">@(v.SourceMaterial?.Name ?? "—")</td>
-                        <td>
-                            @if (v.Srs is not null)
-                            {
-                                <span class="kn-pill kn-pill-stage">@SrsSchedule.DisplayName(v.Srs.Stage)</span>
-                            }
-                            else
-                            {
-                                <span style="color:#bbb">not learned</span>
-                            }
-                        </td>
-                        <td style="text-align:right;white-space:nowrap">
-                            <button class="kn-btn kn-btn-sm" @onclick="() => Edit(v.Id)">Edit</button>
-                            <button class="kn-btn kn-btn-sm" @onclick="() => ToggleSleepAsync(v)">
-                                @(v.IsAsleep ? "Wake" : "Sleep")
-                            </button>
-                        </td>
-                    </tr>
-                }
+            @foreach (Vocabulary v in _items)
+            {
+                <tr class="@(v.IsAsleep ? "kn-asleep" : "")">
+                    <td>
+                        <span class="kn-jp">@v.Japanese</span>
+                        @if (v.IsVerb)
+                        {
+                            <span class="kn-pill kn-pill-verb">@v.VerbClass</span>
+                        }
+                        @if (v.IsAsleep)
+                        {
+                            <span class="kn-pill kn-pill-asleep">asleep</span>
+                        }
+                    </td>
+                    <td>@v.Reading</td>
+                    <td>@v.MeaningsDisplay</td>
+                    <td style="color:#888">@(v.SourceMaterial?.Name ?? "—")</td>
+                    <td>
+                        @if (v.Srs is not null)
+                        {
+                            <span class="kn-pill kn-pill-stage">@SrsSchedule.DisplayName(v.Srs.Stage)</span>
+                        }
+                        else
+                        {
+                            <span style="color:#bbb">not learned</span>
+                        }
+                    </td>
+                    <td style="text-align:right;white-space:nowrap">
+                        <button class="kn-btn kn-btn-sm" @onclick="() => Edit(v.Id)">Edit</button>
+                        <button class="kn-btn kn-btn-sm" @onclick="() => ToggleSleepAsync(v)">
+                            @(v.IsAsleep ? "Wake" : "Sleep")
+                        </button>
+                    </td>
+                </tr>
+            }
             </tbody>
         </table>
+    </div>
     </div>
 }
 

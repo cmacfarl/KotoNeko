@@ -8,8 +8,8 @@ namespace KotoNeko.Web.Services;
 /// <summary>A recently-missed item shown on the dashboard.</summary>
 public record MissedItem(int VocabularyId, string Japanese, string Reading, string Meaning, DateTime ReviewedAt, QuestionType QuestionType);
 
-/// <summary>An upcoming bucket of reviews in the forecast.</summary>
-public record ForecastBucket(DateTime Hour, int Count);
+/// <summary>An upcoming review session: a batch of items that become due at the same time.</summary>
+public record UpcomingSession(DateTime AvailableAt, int Count);
 
 /// <summary>Aggregated data for the home dashboard.</summary>
 public class DashboardSummary
@@ -23,7 +23,9 @@ public class DashboardSummary
     public Dictionary<string, int> BandCounts { get; init; } = new();
 
     public List<MissedItem> RecentlyMissed { get; init; } = new();
-    public List<ForecastBucket> Forecast { get; init; } = new();
+
+    /// <summary>The next few upcoming review sessions, soonest first.</summary>
+    public List<UpcomingSession> UpcomingSessions { get; init; } = new();
 }
 
 public class DashboardService
@@ -91,20 +93,20 @@ public class DashboardService
             .Take(12)
             .ToListAsync();
 
-        // Forecast: due items grouped into the next 24 hourly buckets.
-        DateTime horizon = now.AddHours(24);
+        // Upcoming sessions: items that become due group into a session by their
+        // shared availability time. Take the next few sessions, soonest first.
         List<DateTime> upcoming = await db.SrsItems
             .Where(s => !s.Vocabulary!.IsAsleep
                 && s.NextReviewAt != null
-                && s.NextReviewAt > now
-                && s.NextReviewAt <= horizon)
+                && s.NextReviewAt > now)
             .Select(s => s.NextReviewAt!.Value)
             .ToListAsync();
 
-        List<ForecastBucket> forecast = upcoming
-            .GroupBy(d => new DateTime(d.Year, d.Month, d.Day, d.Hour, 0, 0, DateTimeKind.Utc))
+        List<UpcomingSession> sessions = upcoming
+            .GroupBy(d => d)
             .OrderBy(g => g.Key)
-            .Select(g => new ForecastBucket(g.Key, g.Count()))
+            .Take(UpcomingSessionCount)
+            .Select(g => new UpcomingSession(DateTime.SpecifyKind(g.Key, DateTimeKind.Utc), g.Count()))
             .ToList();
 
         return new DashboardSummary
@@ -115,9 +117,12 @@ public class DashboardService
             AsleepItems = asleep,
             BandCounts = bands,
             RecentlyMissed = missed,
-            Forecast = forecast,
+            UpcomingSessions = sessions,
         };
     }
+
+    /// <summary>How many upcoming review sessions to surface on the dashboard.</summary>
+    private const int UpcomingSessionCount = 8;
 
     private readonly record struct StageCount(SrsStage Stage, int Count);
 }

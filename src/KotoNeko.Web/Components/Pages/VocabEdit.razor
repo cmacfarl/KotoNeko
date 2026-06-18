@@ -19,131 +19,137 @@
     <div class="kn-msg kn-msg-err">@_error</div>
 }
 
-<div class="kn-panel">
-    <div class="kn-grid-2">
-        <div class="kn-form-row">
-            <label>Vocabulary Item</label>
-            <KanaInput Value="@_vocab.Japanese"
-                       ValueChanged="OnJapaneseChanged"
-                       CssClass="kn-input kn-jp"
-                       InterceptKeys="true"
-                       OnTab="SearchCandidatesAsync"
-                       OnEnter="UseKanaOnly" />
-            <div class="kn-hint">
-                Type the word in kana. Press <kbd>Tab</kbd> to look up
-                its writing on jisho, or <kbd>Enter</kbd> if it's a kana-only word.
-            </div>
+    <div class="kn-panel">
+        <div class="kn-grid-2">
+            <div class="kn-form-row">
+                <label>Vocabulary Item</label>
+                <KanaInput Value="@_vocab.Japanese"
+                           ValueChanged="OnJapaneseChanged"
+                           CssClass="kn-input kn-jp"
+                           InterceptKeys="true"
+                           OnTab="SearchCandidatesAsync"
+                           OnEnter="UseKanaOnly" />
+                <div class="kn-hint">
+                    Type the word in kana. Press <kbd>Tab</kbd> to look up
+                    its writing on jisho, or <kbd>Enter</kbd> if it's a kana-only word.
+                </div>
 
-            @if (_searching)
-            {
-                <div class="kn-candidates"><div class="kn-candidates-head">Searching jisho…</div></div>
-            }
-            else if (_candidates.Count > 0)
-            {
-                <div class="kn-candidates">
-                    <div class="kn-candidates-head">
-                        <span>jisho matches for 「@_searchedFor」 — pick a writing</span>
-                        <button class="kn-btn kn-btn-sm" type="button" @onclick="DismissCandidates" title="Dismiss">✕</button>
+                @if (_searching)
+                {
+                    <div class="kn-candidates"><div class="kn-candidates-head">Searching jisho…</div></div>
+                }
+                else if (_candidates.Count > 0)
+                {
+                    <div class="kn-candidates">
+                        <div class="kn-candidates-head">
+                            <span>jisho matches for 「@_searchedFor」 — pick a writing</span>
+                            <button class="kn-btn kn-btn-sm" type="button" @onclick="DismissCandidates" title="Dismiss">✕</button>
+                        </div>
+                        @foreach (KotoNeko.Jisho.JishoCandidate c in _candidates)
+                        {
+                            KotoNeko.Jisho.JishoCandidate candidate = c;
+                            <button class="kn-candidate" type="button" @onclick="() => ApplyCandidate(candidate)">
+                                <span class="kn-jp kn-candidate-word">@candidate.DisplayWriting</span>
+                                <span class="kn-candidate-reading kn-jp">@candidate.Reading</span>
+                                <span class="kn-candidate-meaning">@string.Join("; ", candidate.Meanings.Take(3))</span>
+                                @if (candidate.VerbClass != VerbClass.None)
+                                {
+                                    <span class="kn-candidate-pos">@VerbClassLabel(candidate.VerbClass)</span>
+                                }
+                            </button>
+                        }
                     </div>
-                    @foreach (KotoNeko.Jisho.JishoCandidate c in _candidates)
+                }
+            </div>
+            <div class="kn-form-row">
+                <label>Reading (kana)</label>
+                <KanaInput Value="@_vocab.Reading" 
+                           ValueChanged="@(v => _vocab.Reading = v)" 
+                           CssClass="kn-input kn-jp" 
+                           Disabled="_readingLocked" />
+                <div class="kn-hint">
+                    @if (_readingLocked)
                     {
-                        KotoNeko.Jisho.JishoCandidate candidate = c;
-                        <button class="kn-candidate" type="button" @onclick="() => ApplyCandidate(candidate)">
-                            <span class="kn-jp kn-candidate-word">@candidate.DisplayWriting</span>
-                            <span class="kn-candidate-reading kn-jp">@candidate.Reading</span>
-                            <span class="kn-candidate-meaning">@string.Join("; ", candidate.Meanings.Take(3))</span>
-                            @if (candidate.VerbClass != VerbClass.None)
-                            {
-                                <span class="kn-candidate-pos">@VerbClassLabel(candidate.VerbClass)</span>
-                            }
-                        </button>
+                        <text>Kana-only word — reading copied from the writing. Edit the writing to change it.</text>
+                    }
+                    else
+                    {
+                        <text>Romaji is converted to hiragana as you type.</text>
                     }
                 </div>
+            </div>
+        </div>
+
+        <div class="kn-form-row">
+            <label>English meanings</label>
+            <div class="kn-hint" style="margin-top:0">Any one of these counts as correct in a review. The first is the primary (shown in lists).</div>
+            @for (int i = 0; i < _meanings.Count; i++)
+            {
+                int index = i;
+                <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.4rem">
+                    <input class="kn-input" id="@(index == 0 ? "kn-first-meaning" : null)" @bind="_meanings[index].Text" />
+                    <button class="kn-btn kn-btn-sm kn-btn-danger" type="button" @onclick="() => RemoveMeaning(index)" disabled="@(_meanings.Count == 1)" title="Remove">✕</button>
+                </div>
             }
+            <button class="kn-btn kn-btn-sm" type="button" style="margin-top:0.5rem" @onclick="AddMeaning">+ Add meaning</button>
         </div>
+
         <div class="kn-form-row">
-            <label>Reading (kana)</label>
-            <KanaInput Value="@_vocab.Reading" 
-                       ValueChanged="@(v => _vocab.Reading = v)" 
-                       CssClass="kn-input kn-jp" 
-                       Disabled="_readingLocked" />
-            <div class="kn-hint">
-                @if (_readingLocked)
-                {
-                    <text>Kana-only word — reading copied from the writing. Edit the writing to change it.</text>
-                }
-                else
-                {
-                    <text>Romaji is converted to hiragana as you type.</text>
-                }
+            <label>Alternate readings (optional, ; separated)</label>
+            <input class="kn-input" @bind="_vocab.AlternateReadings" />
+        </div>
+
+        <div class="kn-form-row">
+            <label>Context sentence (optional)</label>
+            <textarea class="kn-textarea kn-jp" @bind="_vocab.ContextSentence"></textarea>
+        </div>
+
+        <div class="kn-form-row">
+            <label>Memo (optional)</label>
+            <textarea class="kn-textarea" @bind="_vocab.Memo"></textarea>
+        </div>
+
+        <div class="kn-grid-2">
+            <div class="kn-form-row">
+                <label>Source material</label>
+                <select class="kn-select" @bind="_vocab.SourceMaterialId">
+                    <option value="">— none —</option>
+                    @foreach (SourceMaterial s in _sources)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="kn-form-row">
+                <label>Verb class</label>
+                <select class="kn-select" @bind="_vocab.VerbClass" @bind:after="OnVerbClassChanged">
+                    @foreach (VerbClass vc in Enum.GetValues<VerbClass>())
+                    {
+                        <option value="@vc">@VerbClassLabel(vc)</option>
+                    }
+                </select>
             </div>
         </div>
-    </div>
 
-    <div class="kn-form-row">
-        <label>English meanings</label>
-        <div class="kn-hint" style="margin-top:0">Any one of these counts as correct in a review. The first is the primary (shown in lists).</div>
-        @for (int i = 0; i < _meanings.Count; i++)
-        {
-            int index = i;
-            <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.4rem">
-                <input class="kn-input" id="@(index == 0 ? "kn-first-meaning" : null)" @bind="_meanings[index].Text" />
-                <button class="kn-btn kn-btn-sm kn-btn-danger" type="button" @onclick="() => RemoveMeaning(index)" disabled="@(_meanings.Count == 1)" title="Remove">✕</button>
-            </div>
-        }
-        <button class="kn-btn kn-btn-sm" type="button" style="margin-top:0.5rem" @onclick="AddMeaning">+ Add meaning</button>
-    </div>
-
-    <div class="kn-form-row">
-        <label>Alternate readings (optional, ; separated)</label>
-        <input class="kn-input" @bind="_vocab.AlternateReadings" />
-    </div>
-
-    <div class="kn-form-row">
-        <label>Context sentence (optional)</label>
-        <textarea class="kn-textarea kn-jp" @bind="_vocab.ContextSentence"></textarea>
-    </div>
-
-    <div class="kn-form-row">
-        <label>Memo (optional)</label>
-        <textarea class="kn-textarea" @bind="_vocab.Memo"></textarea>
-    </div>
-
-    <div class="kn-grid-2">
         <div class="kn-form-row">
-            <label>Source material</label>
-            <select class="kn-select" @bind="_vocab.SourceMaterialId">
-                <option value="">— none —</option>
-                @foreach (SourceMaterial s in _sources)
-                {
-                    <option value="@s.Id">@s.Name</option>
-                }
-            </select>
+            <label style="display:flex;align-items:center;gap:0.4rem">
+                <input type="checkbox" @bind="_vocab.DisplayFurigana" /> Display furigana (show the reading above the kanji; the reading question is not asked)
+            </label>
         </div>
+
         <div class="kn-form-row">
-            <label>Verb class</label>
-            <select class="kn-select" @bind="_vocab.VerbClass" @bind:after="OnVerbClassChanged">
-                @foreach (VerbClass vc in Enum.GetValues<VerbClass>())
-                {
-                    <option value="@vc">@VerbClassLabel(vc)</option>
-                }
-            </select>
+            <label style="display:flex;align-items:center;gap:0.4rem">
+                <input type="checkbox" @bind="_vocab.IsAsleep" /> Asleep (excluded from lessons and reviews)
+            </label>
+        </div>
+
+        <div class="kn-toolbar">
+            <button class="kn-btn kn-btn-accent" @onclick="FetchFromJishoAsync" disabled="@_busy">
+                @(_busy ? "Fetching…" : "⤓ Fetch from jisho")
+            </button>
+            <span class="kn-hint">Detects reading + verb class (and fills meaning if blank), then computes conjugations.</span>
         </div>
     </div>
-
-    <div class="kn-form-row">
-        <label style="display:flex;align-items:center;gap:0.4rem">
-            <input type="checkbox" @bind="_vocab.IsAsleep" /> Asleep (excluded from lessons and reviews)
-        </label>
-    </div>
-
-    <div class="kn-toolbar">
-        <button class="kn-btn kn-btn-accent" @onclick="FetchFromJishoAsync" disabled="@_busy">
-            @(_busy ? "Fetching…" : "⤓ Fetch from jisho")
-        </button>
-        <span class="kn-hint">Detects reading + verb class (and fills meaning if blank), then computes conjugations.</span>
-    </div>
-</div>
 
 @if (_vocab.VerbClass != VerbClass.None)
 {
