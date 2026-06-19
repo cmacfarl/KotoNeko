@@ -52,15 +52,15 @@ public sealed class JapaneseTtsService : IDisposable
     /// When null an internal instance is created and disposed with the service.
     /// </param>
     public JapaneseTtsService(string apiKey, string[]? voices = null, HttpClient? httpClient = null) {
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new ArgumentNullException(nameof(apiKey));
-
-        _apiKey  = apiKey;
+        _apiKey  = apiKey ?? string.Empty;
         _voices  = (voices is { Length: > 0 }) ? voices : DefaultVoices;
         _http    = httpClient ?? new HttpClient();
     }
 
     public async Task<TtsResult> SynthesiseAsync(string text, bool advanceVoice = true) {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+            throw new InvalidOperationException("Google TTS API key is not configured. Set GoogleTtsApiKey in appsettings.json.");
+
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentNullException(nameof(text));
 

@@ -217,6 +217,19 @@ else
         _lastJudgment = outcome.Judgment;
         _lastCorrectAnswer = outcome.CorrectAnswer;
         _mode = Mode.ShowingResult;
+
+        if (outcome.Judgment == AnswerJudgment.Correct && _displayCard is not null)
+        {
+            Vocabulary vocab = _displayCard.Vocabulary;
+            if (vocab.HasWordAudio)
+            {
+                string audioType = vocab.PlaySentenceAudioInReview && vocab.HasSentenceAudio
+                    ? "sentence"
+                    : "word";
+                try { await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/{audioType}"); }
+                catch { }
+            }
+        }
     }
 
     private void Advance()

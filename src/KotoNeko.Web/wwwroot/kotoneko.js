@@ -263,6 +263,21 @@ window.kotoneko = window.kotoneko || {};
         }
     };
 
+    // Play audio from a URL (used for review autoplay).
+    k.playAudio = function (url) {
+        const audio = new Audio(url);
+        audio.play().catch(function () {});
+    };
+
+    // Play audio from a raw byte array passed by Blazor (used for edit-page preview).
+    k.playAudioBytes = function (bytes) {
+        const blob = new Blob([bytes], { type: "audio/mpeg" });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = function () { URL.revokeObjectURL(url); };
+        audio.play().catch(function () { URL.revokeObjectURL(url); });
+    };
+
     // Focus an element by reference (used to keep focus on the answer box).
     k.focus = function (element) {
         if (element && typeof element.focus === "function") {

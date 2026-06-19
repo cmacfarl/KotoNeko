@@ -88,6 +88,13 @@ public class Vocabulary
 
     public List<ReviewLog> ReviewLogs { get; set; } = new();
 
+    public bool HasWordAudio { get; set; }
+    public bool HasSentenceAudio { get; set; }
+    public bool PlaySentenceAudioInReview { get; set; }
+
+    /// <summary>Audio blobs. Only populated when explicitly included (edit page).</summary>
+    public VocabularyAudio? Audio { get; set; }
+
     /// <summary>The primary meaning (lowest sort order), or empty if none set.</summary>
     public string PrimaryMeaning =>
         Meanings.OrderBy(m => m.SortOrder).FirstOrDefault()?.Text ?? string.Empty;

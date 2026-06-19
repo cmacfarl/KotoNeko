@@ -16,6 +16,7 @@ public class KotoNekoDbContext : DbContext
     public DbSet<Conjugation> Conjugations => Set<Conjugation>();
     public DbSet<SrsItem> SrsItems => Set<SrsItem>();
     public DbSet<ReviewLog> ReviewLogs => Set<ReviewLog>();
+    public DbSet<VocabularyAudio> VocabularyAudios => Set<VocabularyAudio>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -102,6 +103,18 @@ public class KotoNekoDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.ReviewedAt);
             entity.HasIndex(e => e.WasCorrect);
+        });
+
+        modelBuilder.Entity<VocabularyAudio>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.WordAudio).HasColumnType("longblob").IsRequired();
+            entity.Property(e => e.SentenceAudio).HasColumnType("longblob");
+            entity.HasOne(e => e.Vocabulary)
+                .WithOne(v => v.Audio)
+                .HasForeignKey<VocabularyAudio>(a => a.VocabularyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.VocabularyId).IsUnique();
         });
     }
 }

@@ -1,3 +1,4 @@
+using KotoNeko.Core.Domain;
 using KotoNeko.Data;
 using KotoNeko.Jisho;
 using KotoNeko.Web.Components;
@@ -27,6 +28,9 @@ builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddScoped<ReviewService>();
 builder.Services.AddScoped<DashboardService>();
+
+string ttsApiKey = builder.Configuration["GoogleTtsApiKey"] ?? string.Empty;
+builder.Services.AddSingleton<JapaneseTtsService>(_ => new JapaneseTtsService(ttsApiKey));
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -68,5 +72,23 @@ app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+app.MapGet("/api/vocab/{id:int}/audio/word", async (int id, IDbContextFactory<KotoNekoDbContext> factory) =>
+{
+    await using KotoNekoDbContext db = await factory.CreateDbContextAsync();
+    VocabularyAudio? a = await db.VocabularyAudios.FirstOrDefaultAsync(x => x.VocabularyId == id);
+    return a is { WordAudio.Length: > 0 }
+        ? Results.File(a.WordAudio, "audio/mpeg")
+        : Results.NotFound();
+});
+
+app.MapGet("/api/vocab/{id:int}/audio/sentence", async (int id, IDbContextFactory<KotoNekoDbContext> factory) =>
+{
+    await using KotoNekoDbContext db = await factory.CreateDbContextAsync();
+    VocabularyAudio? a = await db.VocabularyAudios.FirstOrDefaultAsync(x => x.VocabularyId == id);
+    return a?.SentenceAudio is { Length: > 0 } bytes
+        ? Results.File(bytes, "audio/mpeg")
+        : Results.NotFound();
+});
 
 app.Run();

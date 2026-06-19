@@ -3,6 +3,7 @@
 @inject VocabularyService VocabularyService
 @inject SourceService SourceService
 @inject KotoNeko.Jisho.JishoClient Jisho
+@inject JapaneseTtsService TtsService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -143,6 +144,41 @@
             </label>
         </div>
 
+        <div class="kn-form-row">
+            <label>Speech audio</label>
+            @if (_audioError is not null)
+            {
+                <div class="kn-hint" style="color:var(--kn-incorrect-dark)">@_audioError</div>
+            }
+            @if (_pendingWordAudio is null)
+            {
+                <button class="kn-btn" type="button" @onclick="FetchAudioAsync"
+                        disabled="@(_fetchingAudio || _busy || string.IsNullOrWhiteSpace(_vocab.Japanese))">
+                    @(_fetchingAudio ? "Fetching…" : "⤓ Fetch Speech")
+                </button>
+                <div class="kn-hint">Fetches TTS audio for the word@(!string.IsNullOrWhiteSpace(_vocab.ContextSentence) ? " and context sentence" : "").</div>
+            }
+            else
+            {
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                    <button class="kn-btn" type="button" @onclick="PlayWordAudioAsync">▶ Word</button>
+                    @if (_pendingSentenceAudio is not null)
+                    {
+                        <button class="kn-btn" type="button" @onclick="PlaySentenceAudioAsync">▶ Sentence</button>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_pendingWordAudio is not null && _pendingSentenceAudio is not null)
+        {
+            <div class="kn-form-row">
+                <label style="display:flex;align-items:center;gap:0.4rem">
+                    <input type="checkbox" @bind="_vocab.PlaySentenceAudioInReview" /> Play context sentence audio during reviews (instead of the vocabulary word)
+                </label>
+            </div>
+        }
+
         <div class="kn-toolbar">
             <button class="kn-btn kn-btn-accent" @onclick="FetchFromJishoAsync" disabled="@_busy">
                 @(_busy ? "Fetching…" : "⤓ Fetch from jisho")
@@ -199,6 +235,12 @@
     private string? _error;
     private bool _busy;
 
+    private byte[]? _pendingWordAudio;
+    private byte[]? _pendingSentenceAudio;
+    private bool _audioChanged;
+    private bool _fetchingAudio;
+    private string? _audioError;
+
     // Tab-to-search candidate list + kana-only reading lock.
     private List<KotoNeko.Jisho.JishoCandidate> _candidates = new();
     private string _searchedFor = string.Empty;
@@ -220,6 +262,11 @@
         _candidates = new();
         _searching = false;
         _readingLocked = false;
+        _pendingWordAudio = null;
+        _pendingSentenceAudio = null;
+        _audioChanged = false;
+        _audioError = null;
+        _fetchingAudio = false;
 
         if (Id is int id)
         {
@@ -241,6 +288,12 @@
             if (_meanings.Count == 0)
             {
                 _meanings.Add(new MeaningRow());
+            }
+
+            if (existing.Audio is not null)
+            {
+                _pendingWordAudio = existing.Audio.WordAudio.Length > 0 ? existing.Audio.WordAudio : null;
+                _pendingSentenceAudio = existing.Audio.SentenceAudio is { Length: > 0 } s ? s : null;
             }
         }
         else
@@ -389,6 +442,53 @@
         _focusMeaningQueued = true;
     }
 
+    private async Task FetchAudioAsync()
+    {
+        _audioError = null;
+        if (string.IsNullOrWhiteSpace(_vocab.Japanese))
+        {
+            _audioError = "Enter the Japanese word first.";
+            return;
+        }
+
+        _fetchingAudio = true;
+        try
+        {
+            TtsResult wordResult = await TtsService.SynthesiseAsync(_vocab.Japanese);
+            _pendingWordAudio = wordResult.Audio;
+
+            if (!string.IsNullOrWhiteSpace(_vocab.ContextSentence))
+            {
+                TtsResult sentenceResult = await TtsService.SynthesiseAsync(_vocab.ContextSentence);
+                _pendingSentenceAudio = sentenceResult.Audio;
+            }
+
+            _audioChanged = true;
+        }
+        catch (Exception ex)
+        {
+            _audioError = $"Failed to fetch speech: {ex.Message}";
+        }
+        finally
+        {
+            _fetchingAudio = false;
+        }
+    }
+
+    private async Task PlayWordAudioAsync()
+    {
+        if (_pendingWordAudio is null) return;
+        try { await JS.InvokeVoidAsync("kotoneko.playAudioBytes", _pendingWordAudio); }
+        catch { }
+    }
+
+    private async Task PlaySentenceAudioAsync()
+    {
+        if (_pendingSentenceAudio is null) return;
+        try { await JS.InvokeVoidAsync("kotoneko.playAudioBytes", _pendingSentenceAudio); }
+        catch { }
+    }
+
     private async Task FetchFromJishoAsync()
     {
         _error = null;
@@ -468,7 +568,12 @@
                 .Select(c => new ConjugationResult(c.Form, c.Polarity, c.Kana.Trim()))
                 .ToList();
 
-        await VocabularyService.SaveAsync(_vocab, conjugations);
+        int savedId = await VocabularyService.SaveAsync(_vocab, conjugations);
+        if (_audioChanged && _pendingWordAudio is not null)
+        {
+            await VocabularyService.SaveAudioAsync(savedId, _pendingWordAudio, _pendingSentenceAudio);
+            _audioChanged = false;
+        }
         Nav.NavigateTo("/vocab");
     }
 

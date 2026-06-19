@@ -51,6 +51,7 @@ public class VocabularyService
             .Include(v => v.SourceMaterial)
             .Include(v => v.Srs)
             .Include(v => v.Meanings)
+            .Include(v => v.Audio)
             .FirstOrDefaultAsync(v => v.Id == id);
     }
 
@@ -85,6 +86,7 @@ public class VocabularyService
         entity.DisplayFurigana = input.DisplayFurigana;
         entity.IsAsleep = input.IsAsleep;
         entity.SourceMaterialId = input.SourceMaterialId;
+        entity.PlaySentenceAudioInReview = input.PlaySentenceAudioInReview;
 
         // Replace the meanings set with the (trimmed, de-duplicated, non-empty)
         // meanings from the input, preserving order.
@@ -125,6 +127,32 @@ public class VocabularyService
 
         await db.SaveChangesAsync();
         return entity.Id;
+    }
+
+    public async Task SaveAudioAsync(int vocabId, byte[] wordAudio, byte[]? sentenceAudio)
+    {
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+
+        VocabularyAudio? audio = await db.VocabularyAudios
+            .FirstOrDefaultAsync(a => a.VocabularyId == vocabId);
+
+        if (audio is null)
+        {
+            audio = new VocabularyAudio { VocabularyId = vocabId };
+            db.VocabularyAudios.Add(audio);
+        }
+
+        audio.WordAudio = wordAudio;
+        audio.SentenceAudio = sentenceAudio;
+
+        Vocabulary? vocab = await db.Vocabulary.FindAsync(vocabId);
+        if (vocab is not null)
+        {
+            vocab.HasWordAudio = wordAudio.Length > 0;
+            vocab.HasSentenceAudio = sentenceAudio?.Length > 0 == true;
+        }
+
+        await db.SaveChangesAsync();
     }
 
     public async Task SetAsleepAsync(int id, bool asleep)
