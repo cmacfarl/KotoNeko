@@ -351,6 +351,7 @@ h1, h2, h3 {
     text-align: center;
     padding: 1rem;
     min-height: 300px;
+    max-height: 400px;
 }
 
 .kn-prompt-vocab { background: var(--kn-vocab); }

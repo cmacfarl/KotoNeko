@@ -83,8 +83,7 @@ public class ReviewSession
     /// </summary>
     public SubmitOutcome Submit(string typed)
     {
-        if (_queue.Count == 0)
-        {
+        if (_queue.Count == 0) {
             return new SubmitOutcome { Judgment = AnswerJudgment.Incorrect };
         }
 
@@ -93,8 +92,7 @@ public class ReviewSession
         ReviewQuestion question = card.Questions[current.Question];
 
         AnswerJudgment judgment = question.Grade(typed);
-        if (judgment == AnswerJudgment.CloseTryAgain)
-        {
+        if (judgment == AnswerJudgment.CloseTryAgain) {
             // No state change: let the user retype.
             return new SubmitOutcome { Judgment = judgment, CorrectAnswer = question.ExpectedPrimary };
         }
@@ -103,19 +101,15 @@ public class ReviewSession
         PushSnapshot();
 
         bool finalised = false;
-        if (judgment == AnswerJudgment.Correct)
-        {
+        if (judgment == AnswerJudgment.Correct) {
             question.Answered = true;
             _queue.RemoveAt(0);
 
-            if (card.AllAnswered && !card.Finalised)
-            {
+            if (card.AllAnswered && !card.Finalised) {
                 FinaliseCard(card);
                 finalised = true;
             }
-        }
-        else
-        {
+        } else {
             question.MissedAtLeastOnce = true;
             card.IncorrectCount++;
             // Requeue the missed question to be asked again, a little later.
@@ -124,8 +118,7 @@ public class ReviewSession
             _queue.Insert(insertAt, current);
         }
 
-        return new SubmitOutcome
-        {
+        return new SubmitOutcome {
             Judgment = judgment,
             CardFinalised = finalised,
             CorrectAnswer = question.ExpectedPrimary,
@@ -157,32 +150,24 @@ public class ReviewSession
 
     private void FinaliseCard(ReviewCard card)
     {
-        if (Kind == SessionKind.Lesson && card.Srs.Stage == SrsStage.Locked)
-        {
+        // A lesson teaches the item; it does not penalise misses made while learning.
+        if (Kind == SessionKind.Lesson && card.Srs.Stage == SrsStage.Locked) {
             SrsEngine.Unlock(card.Srs, _now);
-            // A lesson teaches the item; it does not penalise misses made while learning.
-        }
-        else
-        {
+        } else {
             SrsEngine.ApplyReview(card.Srs, card.IncorrectCount, _now);
         }
 
         card.Finalised = true;
 
-        if (card.IncorrectCount > 0)
-        {
+        if (card.IncorrectCount > 0) {
             IncorrectCount++;
-        }
-        else
-        {
+        } else {
             CorrectCount++;
         }
 
         // One log row per question, capturing whether it was ultimately missed.
-        foreach (ReviewQuestion q in card.Questions)
-        {
-            _pendingLogs.Add(new ReviewLog
-            {
+        foreach (ReviewQuestion q in card.Questions) {
+            _pendingLogs.Add(new ReviewLog {
                 VocabularyId = card.Vocabulary.Id,
                 ReviewedAt = _now,
                 QuestionType = q.Type,
@@ -194,18 +179,15 @@ public class ReviewSession
         }
     }
 
-    private int RequeueDistance()
-    {
+    private int RequeueDistance() {
         // Reinsert a missed question a few positions back so it returns soon, but
         // not immediately. Clamp keeps small queues sane.
         int span = Math.Max(1, Math.Min(_queue.Count, 4));
         return _random.Next(1, span + 1);
     }
 
-    private void Shuffle(List<QRef> list)
-    {
-        for (int i = list.Count - 1; i > 0; i--)
-        {
+    private void Shuffle(List<QRef> list) {
+        for (int i = list.Count - 1; i > 0; i--) {
             int j = _random.Next(i + 1);
             (list[i], list[j]) = (list[j], list[i]);
         }

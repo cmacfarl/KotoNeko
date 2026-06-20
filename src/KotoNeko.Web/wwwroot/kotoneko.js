@@ -269,6 +269,20 @@ window.kotoneko = window.kotoneko || {};
         audio.play().catch(function () {});
     };
 
+    // Play a sequence of audio URLs in order. After each clip ends, wait
+    // pauseMs milliseconds before starting the next one.
+    k.playAudioSequence = function (urls, pauseMs) {
+        function playNext(index) {
+            if (index >= urls.length) return;
+            const audio = new Audio(urls[index]);
+            audio.onended = function () {
+                setTimeout(function () { playNext(index + 1); }, pauseMs);
+            };
+            audio.play().catch(function () { playNext(index + 1); });
+        }
+        playNext(0);
+    };
+
     // Play audio from a raw byte array passed by Blazor (used for edit-page preview).
     k.playAudioBytes = function (bytes) {
         const blob = new Blob([bytes], { type: "audio/mpeg" });

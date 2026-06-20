@@ -1,6 +1,7 @@
 @page "/vocab"
 @inject VocabularyService VocabularyService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Vocabulary · KotoNeko</PageTitle>
 
@@ -25,11 +26,11 @@ else
         <table class="kn-table">
             <thead>
             <tr>
-                <th>Word</th>
-                <th>Reading</th>
+                <th style="white-space:nowrap">Word</th>
+                <th style="white-space:nowrap">Reading</th>
                 <th>Meaning</th>
-                <th>Source</th>
-                <th>Stage</th>
+                <th style="white-space:nowrap">Source</th>
+                <th style="white-space:nowrap">Stage</th>
                 <th></th>
             </tr>
             </thead>
@@ -37,7 +38,7 @@ else
             @foreach (Vocabulary v in _items)
             {
                 <tr class="@(v.IsAsleep ? "kn-asleep" : "")">
-                    <td>
+                    <td style="white-space:nowrap">
                         <span class="kn-jp">@v.Japanese</span>
                         @if (v.IsVerb)
                         {
@@ -48,10 +49,10 @@ else
                             <span class="kn-pill kn-pill-asleep">asleep</span>
                         }
                     </td>
-                    <td>@v.Reading</td>
+                    <td style="white-space:nowrap">@v.Reading</td>
                     <td>@v.MeaningsDisplay</td>
-                    <td style="color:#888">@(v.SourceMaterial?.Name ?? "—")</td>
-                    <td>
+                    <td style="white-space:nowrap;color:#888">@(v.SourceMaterial?.Name ?? "—")</td>
+                    <td style="white-space:nowrap">
                         @if (v.Srs is not null)
                         {
                             <span class="kn-pill kn-pill-stage">@SrsSchedule.DisplayName(v.Srs.Stage)</span>
@@ -63,6 +64,8 @@ else
                     </td>
                     <td style="text-align:right;white-space:nowrap">
                         <button class="kn-btn kn-btn-sm" @onclick="() => Edit(v.Id)">Edit</button>
+                        <button class="kn-btn kn-btn-sm" @onclick="() => PlayAsync(v)"
+                                disabled="@(!v.HasWordAudio && !v.HasSentenceAudio)">▶ Play</button>
                         <button class="kn-btn kn-btn-sm" @onclick="() => ToggleSleepAsync(v)">
                             @(v.IsAsleep ? "Wake" : "Sleep")
                         </button>
@@ -98,6 +101,18 @@ else
     private void Edit(int id)
     {
         Nav.NavigateTo($"/vocab/{id}");
+    }
+
+    private async Task PlayAsync(Vocabulary v)
+    {
+        List<string> urls = new();
+        if (v.HasWordAudio)
+            urls.Add($"/api/vocab/{v.Id}/audio/word");
+        if (v.HasSentenceAudio)
+            urls.Add($"/api/vocab/{v.Id}/audio/sentence");
+        if (urls.Count == 0) return;
+        try { await JS.InvokeVoidAsync("kotoneko.playAudioSequence", urls, 1000); }
+        catch { }
     }
 
     private async Task ToggleSleepAsync(Vocabulary v)

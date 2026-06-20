@@ -168,15 +168,12 @@ else
         return Task.CompletedTask;
     }
 
-    private async Task OnKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key != "Enter")
-        {
+    private async Task OnKeyDown(KeyboardEventArgs e) {
+        if (e.Key != "Enter") {
             return;
         }
 
-        if (_mode == Mode.ShowingResult)
-        {
+        if (_mode == Mode.ShowingResult) {
             Advance();
             return;
         }
@@ -184,15 +181,12 @@ else
         await SubmitAsync();
     }
 
-    private async Task SubmitAsync()
-    {
-        if (Session is null || Session.CurrentQuestion is null)
-        {
+    private async Task SubmitAsync() {
+        if (Session is null || Session.CurrentQuestion is null) {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(answer))
-        {
+        if (string.IsNullOrWhiteSpace(answer)) {
             await ShakeAsync("Type an answer.");
             return;
         }
@@ -205,8 +199,7 @@ else
 
         SubmitOutcome outcome = Session.Submit(answer);
 
-        if (outcome.Judgment == AnswerJudgment.CloseTryAgain)
-        {
+        if (outcome.Judgment == AnswerJudgment.CloseTryAgain) {
             await ShakeAsync("Hmm, not quite — check your input and try again.");
             return;
         }
@@ -218,11 +211,9 @@ else
         _lastCorrectAnswer = outcome.CorrectAnswer;
         _mode = Mode.ShowingResult;
 
-        if (outcome.Judgment == AnswerJudgment.Correct && _displayCard is not null)
-        {
+        if (outcome.Judgment == AnswerJudgment.Correct && _displayCard is not null) {
             Vocabulary vocab = _displayCard.Vocabulary;
-            if (vocab.HasWordAudio)
-            {
+            if (vocab.HasWordAudio) {
                 string audioType = vocab.PlaySentenceAudioInReview && vocab.HasSentenceAudio
                     ? "sentence"
                     : "word";
@@ -232,8 +223,7 @@ else
         }
     }
 
-    private void Advance()
-    {
+    private void Advance() {
         _mode = Mode.AwaitingInput;
         _input = string.Empty;
         answer = string.Empty;
@@ -244,10 +234,8 @@ else
         needsClear = true;
     }
 
-    private async Task UndoAsync()
-    {
-        if (Session is null || !Session.CanUndo)
-        {
+    private async Task UndoAsync() {
+        if (Session is null || !Session.CanUndo) {
             return;
         }
 
@@ -260,8 +248,7 @@ else
         await Task.CompletedTask;
     }
 
-    private async Task ShakeAsync(string hint)
-    {
+    private async Task ShakeAsync(string hint) {
         _closeHint = hint;
         _shake = true;
         StateHasChanged();
@@ -269,16 +256,13 @@ else
         _shake = false;
     }
 
-    private async Task ExitAsync()
-    {
+    private async Task ExitAsync() {
         await PersistAsync();
         await OnExit.InvokeAsync();
     }
 
-    private async Task PersistAsync()
-    {
-        if (_persisted || Session is null)
-        {
+    private async Task PersistAsync() {
+        if (_persisted || Session is null) {
             return;
         }
 
