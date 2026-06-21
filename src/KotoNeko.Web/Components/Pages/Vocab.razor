@@ -66,9 +66,6 @@ else
                         <button class="kn-btn kn-btn-sm" @onclick="() => Edit(v.Id)">Edit</button>
                         <button class="kn-btn kn-btn-sm" @onclick="() => PlayAsync(v)"
                                 disabled="@(!v.HasWordAudio && !v.HasSentenceAudio)">▶ Play</button>
-                        <button class="kn-btn kn-btn-sm" @onclick="() => ToggleSleepAsync(v)">
-                            @(v.IsAsleep ? "Wake" : "Sleep")
-                        </button>
                     </td>
                 </tr>
             }
@@ -115,9 +112,4 @@ else
         catch { }
     }
 
-    private async Task ToggleSleepAsync(Vocabulary v)
-    {
-        await VocabularyService.SetAsleepAsync(v.Id, !v.IsAsleep);
-        await LoadAsync();
-    }
 }
