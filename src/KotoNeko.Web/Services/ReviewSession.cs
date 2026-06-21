@@ -150,16 +150,21 @@ public class ReviewSession
 
     private void FinaliseCard(ReviewCard card)
     {
+        // Conjugation questions are practice-only: their misses do not affect the
+        // SRS stage or the session-level correct/incorrect counters.
+        int srsIncorrect = card.Questions
+            .Count(q => q.Type != QuestionType.Conjugation && q.MissedAtLeastOnce);
+
         // A lesson teaches the item; it does not penalise misses made while learning.
         if (Kind == SessionKind.Lesson && card.Srs.Stage == SrsStage.Locked) {
             SrsEngine.Unlock(card.Srs, _now);
         } else {
-            SrsEngine.ApplyReview(card.Srs, card.IncorrectCount, _now);
+            SrsEngine.ApplyReview(card.Srs, srsIncorrect, _now);
         }
 
         card.Finalised = true;
 
-        if (card.IncorrectCount > 0) {
+        if (srsIncorrect > 0) {
             IncorrectCount++;
         } else {
             CorrectCount++;

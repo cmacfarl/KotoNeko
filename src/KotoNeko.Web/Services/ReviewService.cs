@@ -141,6 +141,8 @@ public class ReviewService
         string primaryMeaning = meanings.Count > 0 ? meanings[0] : string.Empty;
         string alternateMeanings = meanings.Count > 1 ? string.Join(';', meanings.Skip(1)) : string.Empty;
 
+        string allMeaningsPrompt = string.Join(", ", meanings);
+
         List<ReviewQuestion> questions = new()
         {
             new ReviewQuestion
@@ -149,6 +151,13 @@ public class ReviewService
                 Prompt = "Meaning",
                 ExpectedPrimary = primaryMeaning,
                 ExpectedAlternates = alternateMeanings,
+            },
+            new ReviewQuestion
+            {
+                Type = QuestionType.Production,
+                Prompt = allMeaningsPrompt,
+                ExpectedPrimary = v.Reading,
+                ExpectedAlternates = string.IsNullOrWhiteSpace(v.AlternateReadings) ? null : v.AlternateReadings,
             },
         };
 

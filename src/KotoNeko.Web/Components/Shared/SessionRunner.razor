@@ -43,16 +43,21 @@ else
 
         <div class="kn-prompt @PromptClass(q)">
             <div class="kn-prompt-main">
-                <div class="kn-prompt-word">
-                    @if (card.Vocabulary.ShowsFurigana) {
-                        <ruby>@card.Vocabulary.Japanese<rt>@card.Vocabulary.Reading</rt></ruby>
-                    } else {
-                        @card.Vocabulary.Japanese
-                    }
-                </div>
-                <div class="kn-prompt-type">
-                    <span class="strong">@q.Prompt</span>
-                </div>
+                @if (q.Type == QuestionType.Production) {
+                    <div class="kn-prompt-production-text">@q.Prompt</div>
+                    <div class="kn-prompt-type"><span class="strong">Japanese reading</span></div>
+                } else {
+                    <div class="kn-prompt-word">
+                        @if (card.Vocabulary.ShowsFurigana) {
+                            <ruby>@card.Vocabulary.Japanese<rt>@card.Vocabulary.Reading</rt></ruby>
+                        } else {
+                            @card.Vocabulary.Japanese
+                        }
+                    </div>
+                    <div class="kn-prompt-type">
+                        <span class="strong">@q.Prompt</span>
+                    </div>
+                }
             </div>
             
             @if (_mode == Mode.ShowingResult) {
@@ -63,8 +68,16 @@ else
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@_lastCorrectAnswer</span></div>
                     } else if (q.Type == QuestionType.Meaning) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@card.Vocabulary.MeaningsDisplay</span></div>
+                    } else if (q.Type == QuestionType.Production) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">
+                            @if (card.Vocabulary.HasKanji) {
+                                <ruby>@card.Vocabulary.Japanese<rt>@card.Vocabulary.Reading</rt></ruby>
+                            } else {
+                                @card.Vocabulary.Japanese
+                            }
+                        </span></div>
                     }
-                    
+
                     @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence)) {
                         <div class="kn-extra-row"><span class="kn-extra-label">Context</span> @card.Vocabulary.ContextSentence</div>
                     }
@@ -74,14 +87,14 @@ else
                 </div>
             } else {
                 <div class="kn-extra">
-                    @if (q.Type == QuestionType.Reading) {
+                    @if (q.Type == QuestionType.Reading || q.Type == QuestionType.Production) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
                     } else if (q.Type == QuestionType.Conjugation) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
                     } else if (q.Type == QuestionType.Meaning) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
                     }
-                    
+
                     @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence)) {
                         <div class="kn-extra-row"><span class="kn-extra-label">Context</span></div>
                     }
@@ -311,12 +324,13 @@ else
     }
 
     private static bool IsKana(QuestionType type) =>
-        type is QuestionType.Reading or QuestionType.Conjugation;
+        type is QuestionType.Reading or QuestionType.Conjugation or QuestionType.Production;
 
     private static string PromptClass(ReviewQuestion q) => q.Type switch
     {
-        QuestionType.Meaning => "kn-prompt-meaning",
-        QuestionType.Reading => "kn-prompt-reading",
+        QuestionType.Meaning    => "kn-prompt-meaning",
+        QuestionType.Reading    => "kn-prompt-reading",
+        QuestionType.Production => "kn-prompt-production",
         QuestionType.Conjugation => "kn-prompt-conjugation",
         _ => "kn-prompt-vocab",
     };
@@ -327,8 +341,9 @@ else
 
     private static string Placeholder(ReviewQuestion q) => q.Type switch
     {
-        QuestionType.Meaning => "Meaning",
-        QuestionType.Reading => "Reading",
+        QuestionType.Meaning    => "Meaning",
+        QuestionType.Reading    => "Reading",
+        QuestionType.Production => "Reading",
         QuestionType.Conjugation => "Conjugated form",
         _ => "",
     };

@@ -36,9 +36,10 @@ public class ReviewQuestion
 
     public AnswerJudgment Grade(string typed) => Type switch
     {
-        QuestionType.Reading => AnswerMatcher.GradeReading(typed, ExpectedPrimary, ExpectedAlternates),
-        QuestionType.Meaning => AnswerMatcher.GradeMeaning(typed, ExpectedPrimary, ExpectedAlternates),
+        QuestionType.Reading    => AnswerMatcher.GradeReading(typed, ExpectedPrimary, ExpectedAlternates),
+        QuestionType.Meaning    => AnswerMatcher.GradeMeaning(typed, ExpectedPrimary, ExpectedAlternates),
         QuestionType.Conjugation => AnswerMatcher.GradeConjugation(typed, ExpectedPrimary),
+        QuestionType.Production => AnswerMatcher.GradeReading(typed, ExpectedPrimary, ExpectedAlternates),
         _ => AnswerJudgment.Incorrect,
     };
 }

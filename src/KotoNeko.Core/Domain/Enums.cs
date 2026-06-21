@@ -67,6 +67,8 @@ public enum QuestionType
     Reading = 0,
     Meaning = 1,
     Conjugation = 2,
+    /// <summary>English → Japanese: given the meanings, type the kana reading.</summary>
+    Production = 3,
 }
 
 /// <summary>A loose categorisation for source materials, used only for display.</summary>
