@@ -72,11 +72,12 @@ public class SourceService
             .ExecuteUpdateAsync(s => s.SetProperty(v => v.IsAsleep, asleep));
     }
 
+    public readonly record struct SourceStats(int Count, bool AllAsleep);
+
     /// <summary>
-    /// For each source id, returns true when ALL vocabulary in that source is asleep
-    /// (and the source has at least one vocabulary item).
+    /// For each source id, returns vocabulary count and whether ALL vocabulary is asleep.
     /// </summary>
-    public async Task<Dictionary<int, bool>> GetSourceSleepStatusAsync(IReadOnlyList<int> sourceIds)
+    public async Task<Dictionary<int, SourceStats>> GetSourceStatsAsync(IReadOnlyList<int> sourceIds)
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
         var groups = await db.Vocabulary
@@ -87,6 +88,6 @@ public class SourceService
 
         return groups.ToDictionary(
             g => g.SourceId,
-            g => g.Total > 0 && g.Total == g.Asleep);
+            g => new SourceStats(g.Total, g.Total > 0 && g.Total == g.Asleep));
     }
 }

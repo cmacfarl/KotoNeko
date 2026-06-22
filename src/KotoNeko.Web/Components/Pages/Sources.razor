@@ -51,20 +51,22 @@
     {
         <table class="kn-table">
             <thead>
-                <tr><th style="white-space:nowrap">Asleep</th><th>Name</th><th>Kind</th><th>Notes</th><th></th></tr>
+                <tr><th>Asleep</th><th>Name</th><th>Kind</th><th>Notes</th><th style="text-align:right">Count</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (SourceMaterial s in _sources)
                 {
+                    SourceService.SourceStats stats = _stats.TryGetValue(s.Id, out SourceService.SourceStats sv) ? sv : default;
                     <tr>
-                        <td style="text-align:center">
+                        <td>
                             <input type="checkbox"
-                                   checked="@(_sleepStatus.TryGetValue(s.Id, out bool allAsleep) && allAsleep)"
+                                   checked="@stats.AllAsleep"
                                    @onchange="async e => await ToggleSourceSleepAsync(s.Id, (bool)e.Value!)" />
                         </td>
                         <td style="white-space:nowrap">@s.Name</td>
                         <td>@s.Kind</td>
                         <td style="color:#888">@s.Notes</td>
+                        <td style="text-align:right">@stats.Count</td>
                         <td style="text-align:right">
                             <button class="kn-btn kn-btn-sm" @onclick="() => Edit(s)">Edit</button>
                             <button class="kn-btn kn-btn-sm kn-btn-danger" @onclick="() => DeleteAsync(s.Id)">Delete</button>
@@ -72,6 +74,13 @@
                     </tr>
                 }
             </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="4"></td>
+                    <td style="text-align:right;color:#888;font-weight:600">Total: @_stats.Values.Sum(s => s.Count)</td>
+                    <td></td>
+                </tr>
+            </tfoot>
         </table>
     }
 </div>
@@ -80,7 +89,7 @@
     private List<SourceMaterial> _sources = new();
     private SourceMaterial _editing = NewSource();
     private string? _message;
-    private Dictionary<int, bool> _sleepStatus = new();
+    private Dictionary<int, SourceService.SourceStats> _stats = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -90,13 +99,14 @@
     private async Task LoadAsync()
     {
         _sources = await SourceService.GetAllAsync();
-        _sleepStatus = await SourceService.GetSourceSleepStatusAsync(_sources.Select(s => s.Id).ToList());
+        _stats = await SourceService.GetSourceStatsAsync(_sources.Select(s => s.Id).ToList());
     }
 
     private async Task ToggleSourceSleepAsync(int sourceId, bool asleep)
     {
         await SourceService.SetSourceAsleepAsync(sourceId, asleep);
-        _sleepStatus[sourceId] = asleep;
+        if (_stats.TryGetValue(sourceId, out SourceService.SourceStats existing))
+            _stats[sourceId] = existing with { AllAsleep = asleep };
     }
 
     private static SourceMaterial NewSource() => new() { Kind = SourceKind.Other };
