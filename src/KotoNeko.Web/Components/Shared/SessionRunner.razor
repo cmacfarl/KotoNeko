@@ -226,7 +226,13 @@ else
 
         if (outcome.Judgment == AnswerJudgment.Correct && _displayCard is not null) {
             Vocabulary vocab = _displayCard.Vocabulary;
-            if (vocab.HasWordAudio) {
+            if (question.Type == QuestionType.Conjugation && question.ConjugationId is int conjId)
+            {
+                try { await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/conjugation/{conjId}/audio"); }
+                catch { }
+            }
+            else if (vocab.HasWordAudio)
+            {
                 string audioType = vocab.PlaySentenceAudioInReview && vocab.HasSentenceAudio
                     ? "sentence"
                     : "word";

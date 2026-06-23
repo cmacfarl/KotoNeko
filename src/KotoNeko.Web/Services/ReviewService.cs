@@ -184,6 +184,7 @@ public class ReviewService
                 ExpectedPrimary = chosen.ExpectedKana,
                 Form = chosen.Form,
                 Polarity = chosen.Polarity,
+                ConjugationId = chosen.HasAudio ? chosen.Id : null,
             });
         }
 

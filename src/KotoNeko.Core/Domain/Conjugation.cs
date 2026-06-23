@@ -17,4 +17,7 @@ public class Conjugation
 
     /// <summary>The expected conjugated form, in kana, e.g. はなさなかった.</summary>
     public string ExpectedKana { get; set; } = string.Empty;
+
+    public bool HasAudio { get; set; }
+    public ConjugatedAudio? ConjugatedAudio { get; set; }
 }

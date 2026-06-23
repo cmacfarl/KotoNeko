@@ -108,19 +108,43 @@ public class VocabularyService
 
         if (conjugations is not null)
         {
-            db.Conjugations.RemoveRange(entity.Conjugations);
-            entity.Conjugations.Clear();
-
-            if (entity.VerbClass != VerbClass.None)
+            if (entity.VerbClass == VerbClass.None || conjugations.Count == 0)
             {
+                db.Conjugations.RemoveRange(entity.Conjugations);
+                entity.Conjugations.Clear();
+            }
+            else
+            {
+                // Upsert: update existing rows in place (preserving IDs and ConjugatedAudio FKs).
+                Dictionary<(ConjugationForm, Polarity), Conjugation> existing =
+                    entity.Conjugations.ToDictionary(c => (c.Form, c.Polarity));
+                HashSet<(ConjugationForm, Polarity)> inputKeys =
+                    conjugations.Select(c => (c.Form, c.Polarity)).ToHashSet();
+
+                foreach (Conjugation c in entity.Conjugations.ToList())
+                {
+                    if (!inputKeys.Contains((c.Form, c.Polarity)))
+                    {
+                        db.Conjugations.Remove(c);
+                        entity.Conjugations.Remove(c);
+                    }
+                }
+
                 foreach (ConjugationResult result in conjugations)
                 {
-                    entity.Conjugations.Add(new Conjugation
+                    if (existing.TryGetValue((result.Form, result.Polarity), out Conjugation? ec))
                     {
-                        Form = result.Form,
-                        Polarity = result.Polarity,
-                        ExpectedKana = result.Kana,
-                    });
+                        ec.ExpectedKana = result.Kana;
+                    }
+                    else
+                    {
+                        entity.Conjugations.Add(new Conjugation
+                        {
+                            Form = result.Form,
+                            Polarity = result.Polarity,
+                            ExpectedKana = result.Kana,
+                        });
+                    }
                 }
             }
         }
@@ -150,6 +174,30 @@ public class VocabularyService
         {
             vocab.HasWordAudio = wordAudio.Length > 0;
             vocab.HasSentenceAudio = sentenceAudio?.Length > 0 == true;
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    public async Task SaveConjugationAudioAsync(int vocabId, IReadOnlyDictionary<(ConjugationForm, Polarity), byte[]> audio)
+    {
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        List<Conjugation> conjugations = await db.Conjugations
+            .Where(c => c.VocabularyId == vocabId)
+            .Include(c => c.ConjugatedAudio)
+            .ToListAsync();
+
+        foreach (Conjugation conj in conjugations)
+        {
+            if (!audio.TryGetValue((conj.Form, conj.Polarity), out byte[]? bytes))
+                continue;
+
+            if (conj.ConjugatedAudio is null)
+                db.ConjugatedAudios.Add(new ConjugatedAudio { ConjugationId = conj.Id, Audio = bytes });
+            else
+                conj.ConjugatedAudio.Audio = bytes;
+
+            conj.HasAudio = true;
         }
 
         await db.SaveChangesAsync();

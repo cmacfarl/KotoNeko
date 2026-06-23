@@ -91,4 +91,13 @@ app.MapGet("/api/vocab/{id:int}/audio/sentence", async (int id, IDbContextFactor
         : Results.NotFound();
 });
 
+app.MapGet("/api/conjugation/{id:int}/audio", async (int id, IDbContextFactory<KotoNekoDbContext> factory) =>
+{
+    await using KotoNekoDbContext db = await factory.CreateDbContextAsync();
+    ConjugatedAudio? a = await db.ConjugatedAudios.FirstOrDefaultAsync(x => x.ConjugationId == id);
+    return a is { Audio.Length: > 0 }
+        ? Results.File(a.Audio, "audio/mpeg")
+        : Results.NotFound();
+});
+
 app.Run();

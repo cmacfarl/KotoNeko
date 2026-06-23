@@ -28,6 +28,9 @@ public class ReviewQuestion
     public ConjugationForm? Form { get; init; }
     public Polarity? Polarity { get; init; }
 
+    /// <summary>Set only when the conjugation has audio; used to play the correct clip in reviews.</summary>
+    public int? ConjugationId { get; init; }
+
     /// <summary>True once answered correctly (and so cleared from the card).</summary>
     public bool Answered { get; set; }
 
