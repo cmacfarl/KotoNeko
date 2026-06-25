@@ -64,13 +64,10 @@ public class VocabularyService
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
 
         Vocabulary entity;
-        if (input.Id == 0)
-        {
+        if (input.Id == 0) {
             entity = new Vocabulary { CreatedAt = DateTime.UtcNow };
             db.Vocabulary.Add(entity);
-        }
-        else
-        {
+        } else {
             entity = await db.Vocabulary
                 .Include(v => v.Conjugations)
                 .Include(v => v.Meanings)
@@ -94,11 +91,9 @@ public class VocabularyService
         entity.Meanings.Clear();
         int order = 0;
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (VocabularyMeaning meaning in input.Meanings)
-        {
+        foreach (VocabularyMeaning meaning in input.Meanings) {
             string text = (meaning.Text ?? string.Empty).Trim();
-            if (text.Length == 0 || !seen.Add(text))
-            {
+            if (text.Length == 0 || !seen.Add(text)) {
                 continue;
             }
 
@@ -106,38 +101,28 @@ public class VocabularyService
             order++;
         }
 
-        if (conjugations is not null)
-        {
-            if (entity.VerbClass == VerbClass.None || conjugations.Count == 0)
-            {
+        if (conjugations is not null) {
+            if (entity.VerbClass == VerbClass.None || conjugations.Count == 0) {
                 db.Conjugations.RemoveRange(entity.Conjugations);
                 entity.Conjugations.Clear();
-            }
-            else
-            {
+            } else {
                 // Upsert: update existing rows in place (preserving IDs and ConjugatedAudio FKs).
                 Dictionary<(ConjugationForm, Polarity), Conjugation> existing =
                     entity.Conjugations.ToDictionary(c => (c.Form, c.Polarity));
                 HashSet<(ConjugationForm, Polarity)> inputKeys =
                     conjugations.Select(c => (c.Form, c.Polarity)).ToHashSet();
 
-                foreach (Conjugation c in entity.Conjugations.ToList())
-                {
-                    if (!inputKeys.Contains((c.Form, c.Polarity)))
-                    {
+                foreach (Conjugation c in entity.Conjugations.ToList()) {
+                    if (!inputKeys.Contains((c.Form, c.Polarity))) {
                         db.Conjugations.Remove(c);
                         entity.Conjugations.Remove(c);
                     }
                 }
 
-                foreach (ConjugationResult result in conjugations)
-                {
-                    if (existing.TryGetValue((result.Form, result.Polarity), out Conjugation? ec))
-                    {
+                foreach (ConjugationResult result in conjugations) {
+                    if (existing.TryGetValue((result.Form, result.Polarity), out Conjugation? ec)) {
                         ec.ExpectedKana = result.Kana;
-                    }
-                    else
-                    {
+                    } else {
                         entity.Conjugations.Add(new Conjugation
                         {
                             Form = result.Form,
@@ -160,8 +145,7 @@ public class VocabularyService
         VocabularyAudio? audio = await db.VocabularyAudios
             .FirstOrDefaultAsync(a => a.VocabularyId == vocabId);
 
-        if (audio is null)
-        {
+        if (audio is null) {
             audio = new VocabularyAudio { VocabularyId = vocabId };
             db.VocabularyAudios.Add(audio);
         }
@@ -170,8 +154,7 @@ public class VocabularyService
         audio.SentenceAudio = sentenceAudio;
 
         Vocabulary? vocab = await db.Vocabulary.FindAsync(vocabId);
-        if (vocab is not null)
-        {
+        if (vocab is not null) {
             vocab.HasWordAudio = wordAudio.Length > 0;
             vocab.HasSentenceAudio = sentenceAudio?.Length > 0 == true;
         }
