@@ -158,8 +158,7 @@ else
 
     protected override void OnParametersSet()
     {
-        if (Session is not null && Session.CurrentQuestion is not null)
-        {
+        if (Session is not null && Session.CurrentQuestion is not null) {
             _displayCard = Session.CurrentCard;
             _displayQuestion = Session.CurrentQuestion;
             _focusQueued = true;
@@ -174,8 +173,7 @@ else
     [JSInvokable]
     public Task OnKanaInput(string converted)
     {
-        if (_mode != Mode.ShowingResult)
-        {
+        if (_mode != Mode.ShowingResult) {
             answer = converted;
         }
         return Task.CompletedTask;
@@ -226,13 +224,10 @@ else
 
         if (outcome.Judgment == AnswerJudgment.Correct && _displayCard is not null) {
             Vocabulary vocab = _displayCard.Vocabulary;
-            if (question.Type == QuestionType.Conjugation && question.ConjugationId is int conjId)
-            {
+            if (question.Type == QuestionType.Conjugation && question.ConjugationId is int conjId) {
                 try { await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/conjugation/{conjId}/audio"); }
                 catch { }
-            }
-            else if (vocab.HasWordAudio)
-            {
+            } else if (vocab.HasWordAudio) {
                 string audioType = vocab.PlaySentenceAudioInReview && vocab.HasSentenceAudio
                     ? "sentence"
                     : "word";

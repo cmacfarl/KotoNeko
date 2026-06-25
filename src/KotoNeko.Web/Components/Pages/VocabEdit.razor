@@ -24,7 +24,7 @@
         <div class="kn-grid-2">
             <div class="kn-form-row">
                 <label>Vocabulary Item</label>
-                <KanaInput Value="@_vocab.Japanese"
+                <KanaInput Value="@vocab.Japanese"
                            ValueChanged="OnJapaneseChanged"
                            CssClass="kn-input kn-jp"
                            InterceptKeys="true"
@@ -35,18 +35,18 @@
                     its writing on jisho, or <kbd>Enter</kbd> if it's a kana-only word.
                 </div>
 
-                @if (_searching)
+                @if (searching)
                 {
                     <div class="kn-candidates"><div class="kn-candidates-head">Searching jisho…</div></div>
                 }
-                else if (_candidates.Count > 0)
+                else if (candidates.Count > 0)
                 {
                     <div class="kn-candidates">
                         <div class="kn-candidates-head">
-                            <span>jisho matches for 「@_searchedFor」 — pick a writing</span>
+                            <span>jisho matches for 「@searchedFor」 — pick a writing</span>
                             <button class="kn-btn kn-btn-sm" type="button" @onclick="DismissCandidates" title="Dismiss">✕</button>
                         </div>
-                        @foreach (KotoNeko.Jisho.JishoCandidate c in _candidates)
+                        @foreach (KotoNeko.Jisho.JishoCandidate c in candidates)
                         {
                             KotoNeko.Jisho.JishoCandidate candidate = c;
                             <button class="kn-candidate" type="button" @onclick="() => ApplyCandidate(candidate)">
@@ -64,12 +64,12 @@
             </div>
             <div class="kn-form-row">
                 <label>Reading (kana)</label>
-                <KanaInput Value="@_vocab.Reading" 
-                           ValueChanged="@(v => _vocab.Reading = v)" 
+                <KanaInput Value="@vocab.Reading" 
+                           ValueChanged="@(v => vocab.Reading = v)" 
                            CssClass="kn-input kn-jp" 
-                           Disabled="_readingLocked" />
+                           Disabled="readingLocked" />
                 <div class="kn-hint">
-                    @if (_readingLocked)
+                    @if (readingLocked)
                     {
                         <text>Kana-only word — reading copied from the writing. Edit the writing to change it.</text>
                     }
@@ -84,12 +84,12 @@
         <div class="kn-form-row">
             <label>English meanings</label>
             <div class="kn-hint" style="margin-top:0">Any one of these counts as correct in a review. The first is the primary (shown in lists).</div>
-            @for (int i = 0; i < _meanings.Count; i++)
+            @for (int i = 0; i < meanings.Count; i++)
             {
                 int index = i;
                 <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.4rem">
-                    <input class="kn-input" id="@(index == 0 ? "kn-first-meaning" : null)" @bind="_meanings[index].Text" />
-                    <button class="kn-btn kn-btn-sm kn-btn-danger" type="button" @onclick="() => RemoveMeaning(index)" disabled="@(_meanings.Count == 1)" title="Remove">✕</button>
+                    <input class="kn-input" id="@(index == 0 ? "kn-first-meaning" : null)" @bind="meanings[index].Text" />
+                    <button class="kn-btn kn-btn-sm kn-btn-danger" type="button" @onclick="() => RemoveMeaning(index)" disabled="@(meanings.Count == 1)" title="Remove">✕</button>
                 </div>
             }
             <button class="kn-btn kn-btn-sm" type="button" style="margin-top:0.5rem" @onclick="AddMeaning">+ Add meaning</button>
@@ -97,25 +97,25 @@
 
         <div class="kn-form-row">
             <label>Alternate readings (optional, ; separated)</label>
-            <input class="kn-input" @bind="_vocab.AlternateReadings" />
+            <input class="kn-input" @bind="vocab.AlternateReadings" />
         </div>
 
         <div class="kn-form-row">
             <label>Context sentence (optional)</label>
-            <textarea class="kn-textarea kn-jp" @bind="_vocab.ContextSentence"></textarea>
+            <textarea class="kn-textarea kn-jp" @bind="vocab.ContextSentence"></textarea>
         </div>
 
         <div class="kn-form-row">
             <label>Memo (optional)</label>
-            <textarea class="kn-textarea" @bind="_vocab.Memo"></textarea>
+            <textarea class="kn-textarea" @bind="vocab.Memo"></textarea>
         </div>
 
         <div class="kn-grid-2">
             <div class="kn-form-row">
                 <label>Source material</label>
-                <select class="kn-select" @bind="_vocab.SourceMaterialId">
+                <select class="kn-select" @bind="vocab.SourceMaterialId">
                     <option value="">— none —</option>
-                    @foreach (SourceMaterial s in _sources)
+                    @foreach (SourceMaterial s in sources)
                     {
                         <option value="@s.Id">@s.Name</option>
                     }
@@ -123,7 +123,7 @@
             </div>
             <div class="kn-form-row">
                 <label>Verb class</label>
-                <select class="kn-select" @bind="_vocab.VerbClass" @bind:after="OnVerbClassChanged">
+                <select class="kn-select" @bind="vocab.VerbClass" @bind:after="OnVerbClassChanged">
                     @foreach (VerbClass vc in Enum.GetValues<VerbClass>())
                     {
                         <option value="@vc">@VerbClassLabel(vc)</option>
@@ -134,55 +134,55 @@
 
         <div class="kn-form-row">
             <label style="display:flex;align-items:center;gap:0.4rem">
-                <input type="checkbox" @bind="_vocab.DisplayFurigana" /> Display furigana (show the reading above the kanji; the reading question is not asked)
+                <input type="checkbox" @bind="vocab.DisplayFurigana" /> Display furigana (show the reading above the kanji; the reading question is not asked)
             </label>
         </div>
 
         <div class="kn-form-row">
             <label style="display:flex;align-items:center;gap:0.4rem">
-                <input type="checkbox" @bind="_vocab.IsAsleep" /> Asleep (excluded from lessons and reviews)
+                <input type="checkbox" @bind="vocab.IsAsleep" /> Asleep (excluded from lessons and reviews)
             </label>
         </div>
 
         <div class="kn-form-row">
             <label>Speech audio</label>
-            @if (_audioError is not null)
+            @if (audioError is not null)
             {
-                <div class="kn-hint" style="color:var(--kn-incorrect-dark)">@_audioError</div>
+                <div class="kn-hint" style="color:var(--kn-incorrect-dark)">@audioError</div>
             }
-            @if (_pendingWordAudio is not null || _pendingSentenceAudio is not null)
+            @if (pendingWordAudio is not null || pendingSentenceAudio is not null)
             {
                 <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.4rem">
-                    @if (_pendingWordAudio is not null)
+                    @if (pendingWordAudio is not null)
                     {
                         <button class="kn-btn" type="button" @onclick="PlayWordAudioAsync">▶ Word</button>
                     }
-                    @if (_pendingSentenceAudio is not null)
+                    @if (pendingSentenceAudio is not null)
                     {
                         <button class="kn-btn" type="button" @onclick="PlaySentenceAudioAsync">▶ Sentence</button>
                     }
                 </div>
             }
-            @if (_vocab.IsVerb && _conjugations.Count > 0)
+            @if (vocab.IsVerb && conjugations.Count > 0)
             {
-                int conjReady = _conjugations.Count(c => c.HasAudio || _pendingConjugationAudio.ContainsKey((c.Form, c.Polarity)));
-                <div class="kn-hint">@conjReady / @_conjugations.Count conjugation clips.</div>
+                int conjReady = conjugations.Count(c => c.HasAudio || pendingConjugationAudio.ContainsKey((c.Form, c.Polarity)));
+                <div class="kn-hint">@conjReady / @conjugations.Count conjugation clips.</div>
             }
             @if (!HasAllAudio)
             {
                 <button class="kn-btn" type="button" @onclick="FetchAudioAsync"
-                        disabled="@(_fetchingAudio || _busy || string.IsNullOrWhiteSpace(_vocab.Japanese))">
-                    @(_fetchingAudio ? "Fetching…" : "⤓ Fetch Speech")
+                        disabled="@(fetchingAudio || _busy || string.IsNullOrWhiteSpace(vocab.Japanese))">
+                    @(fetchingAudio ? "Fetching…" : "⤓ Fetch Speech")
                 </button>
                 <div class="kn-hint">Fetches missing TTS audio.</div>
             }
         </div>
 
-        @if (_pendingWordAudio is not null && _pendingSentenceAudio is not null)
+        @if (pendingWordAudio is not null && pendingSentenceAudio is not null)
         {
             <div class="kn-form-row">
                 <label style="display:flex;align-items:center;gap:0.4rem">
-                    <input type="checkbox" @bind="_vocab.PlaySentenceAudioInReview" /> Play context sentence audio during reviews (instead of the vocabulary word)
+                    <input type="checkbox" @bind="vocab.PlaySentenceAudioInReview" /> Play context sentence audio during reviews (instead of the vocabulary word)
                 </label>
             </div>
         }
@@ -195,7 +195,7 @@
         </div>
     </div>
 
-@if (_vocab.VerbClass != VerbClass.None)
+@if (vocab.VerbClass != VerbClass.None)
 {
     <div class="kn-panel">
         <h2>Conjugations</h2>
@@ -204,14 +204,14 @@
             <span class="kn-hint">Computed locally. Edit any cell to override.</span>
         </div>
 
-        @if (_conjugations.Count == 0)
+        @if (conjugations.Count == 0)
         {
             <p class="kn-empty">No conjugations yet — set the reading and recompute.</p>
         }
         else
         {
             <div class="kn-conj-grid">
-                @foreach (EditableConjugation c in _conjugations)
+                @foreach (EditableConjugation c in conjugations)
                 {
                     <div class="kn-conj-cell kn-form-row">
                         <label>@ConjugationLabels.Describe(c.Form, c.Polarity)</label>
@@ -235,54 +235,54 @@
 @code {
     [Parameter] public int? Id { get; set; }
 
-    private Vocabulary _vocab = new();
-    private List<SourceMaterial> _sources = new();
-    private List<EditableConjugation> _conjugations = new();
-    private List<MeaningRow> _meanings = new() { new MeaningRow() };
+    private Vocabulary vocab = new();
+    private List<SourceMaterial> sources = new();
+    private List<EditableConjugation> conjugations = new();
+    private List<MeaningRow> meanings = new() { new MeaningRow() };
     private string? _message;
     private string? _error;
     private bool _busy;
 
-    private byte[]? _pendingWordAudio;
-    private byte[]? _pendingSentenceAudio;
-    private Dictionary<(ConjugationForm, Polarity), byte[]> _pendingConjugationAudio = new();
-    private bool _audioChanged;
-    private bool _fetchingAudio;
-    private string? _audioError;
+    private byte[]? pendingWordAudio;
+    private byte[]? pendingSentenceAudio;
+    private Dictionary<(ConjugationForm, Polarity), byte[]> pendingConjugationAudio = new();
+    private bool audioChanged;
+    private bool fetchingAudio;
+    private string? audioError;
 
     private bool HasAllAudio =>
-        (_vocab.HasWordAudio || _pendingWordAudio is not null)
-        && (string.IsNullOrWhiteSpace(_vocab.ContextSentence) || _vocab.HasSentenceAudio || _pendingSentenceAudio is not null)
-        && (!_vocab.IsVerb || _conjugations.Count == 0
-            || _conjugations.All(c => c.HasAudio || _pendingConjugationAudio.ContainsKey((c.Form, c.Polarity))));
+        (vocab.HasWordAudio || pendingWordAudio is not null)
+        && (string.IsNullOrWhiteSpace(vocab.ContextSentence) || vocab.HasSentenceAudio || pendingSentenceAudio is not null)
+        && (!vocab.IsVerb || conjugations.Count == 0
+            || conjugations.All(c => c.HasAudio || pendingConjugationAudio.ContainsKey((c.Form, c.Polarity))));
 
     // Tab-to-search candidate list + kana-only reading lock.
-    private List<KotoNeko.Jisho.JishoCandidate> _candidates = new();
-    private string _searchedFor = string.Empty;
-    private bool _searching;
-    private bool _readingLocked;
-    private bool _focusMeaningQueued;
+    private List<KotoNeko.Jisho.JishoCandidate> candidates = new();
+    private string searchedFor = string.Empty;
+    private bool searching;
+    private bool readingLocked;
+    private bool focusMeaningQueued;
 
     private bool CanSave =>
-        !string.IsNullOrWhiteSpace(_vocab.Japanese)
-        && !string.IsNullOrWhiteSpace(_vocab.Reading)
-        && _meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
+        !string.IsNullOrWhiteSpace(vocab.Japanese)
+        && !string.IsNullOrWhiteSpace(vocab.Reading)
+        && meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
 
     protected override async Task OnParametersSetAsync()
     {
-        _sources = await SourceService.GetAllAsync();
+        sources = await SourceService.GetAllAsync();
 
         // Reset transient UI state in case the component instance is reused
         // across an edit -> new navigation.
-        _candidates = new();
-        _searching = false;
-        _readingLocked = false;
-        _pendingWordAudio = null;
-        _pendingSentenceAudio = null;
-        _pendingConjugationAudio = new();
-        _audioChanged = false;
-        _audioError = null;
-        _fetchingAudio = false;
+        candidates = new();
+        searching = false;
+        readingLocked = false;
+        pendingWordAudio = null;
+        pendingSentenceAudio = null;
+        pendingConjugationAudio = new();
+        audioChanged = false;
+        audioError = null;
+        fetchingAudio = false;
 
         if (Id is int id)
         {
@@ -293,49 +293,49 @@
                 return;
             }
 
-            _vocab = existing;
-            _conjugations = existing.Conjugations
+            vocab = existing;
+            conjugations = existing.Conjugations
                 .Select(c => new EditableConjugation { Form = c.Form, Polarity = c.Polarity, Kana = c.ExpectedKana, HasAudio = c.HasAudio })
                 .ToList();
-            _meanings = existing.Meanings
+            meanings = existing.Meanings
                 .OrderBy(m => m.SortOrder)
                 .Select(m => new MeaningRow { Text = m.Text })
                 .ToList();
-            if (_meanings.Count == 0)
+            if (meanings.Count == 0)
             {
-                _meanings.Add(new MeaningRow());
+                meanings.Add(new MeaningRow());
             }
 
             if (existing.Audio is not null)
             {
-                _pendingWordAudio = existing.Audio.WordAudio.Length > 0 ? existing.Audio.WordAudio : null;
-                _pendingSentenceAudio = existing.Audio.SentenceAudio is { Length: > 0 } s ? s : null;
+                pendingWordAudio = existing.Audio.WordAudio.Length > 0 ? existing.Audio.WordAudio : null;
+                pendingSentenceAudio = existing.Audio.SentenceAudio is { Length: > 0 } s ? s : null;
             }
         }
         else
         {
-            _vocab = new Vocabulary();
-            _conjugations = new();
-            _meanings = new() { new MeaningRow() };
+            vocab = new Vocabulary();
+            conjugations = new();
+            meanings = new() { new MeaningRow() };
         }
     }
 
     private void AddMeaning()
     {
-        _meanings.Add(new MeaningRow());
+        meanings.Add(new MeaningRow());
     }
 
     private void RemoveMeaning(int index)
     {
-        if (_meanings.Count > 1)
+        if (meanings.Count > 1)
         {
-            _meanings.RemoveAt(index);
+            meanings.RemoveAt(index);
         }
     }
 
     private void OnVerbClassChanged()
     {
-        if (_vocab.VerbClass != VerbClass.None && _conjugations.Count == 0)
+        if (vocab.VerbClass != VerbClass.None && conjugations.Count == 0)
         {
             RegenerateConjugations();
         }
@@ -343,22 +343,22 @@
 
     private void RegenerateConjugations()
     {
-        if (_vocab.VerbClass == VerbClass.None || string.IsNullOrWhiteSpace(_vocab.Reading))
+        if (vocab.VerbClass == VerbClass.None || string.IsNullOrWhiteSpace(vocab.Reading))
         {
             return;
         }
 
-        IReadOnlyList<ConjugationResult> generated = ConjugationEngine.Generate(_vocab.Reading, _vocab.VerbClass);
-        _conjugations = generated
+        IReadOnlyList<ConjugationResult> generated = ConjugationEngine.Generate(vocab.Reading, vocab.VerbClass);
+        conjugations = generated
             .Select(g => new EditableConjugation { Form = g.Form, Polarity = g.Polarity, Kana = g.Kana })
             .ToList();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_focusMeaningQueued)
+        if (focusMeaningQueued)
         {
-            _focusMeaningQueued = false;
+            focusMeaningQueued = false;
             try
             {
                 await JS.InvokeVoidAsync("kotoneko.focusById", "kn-first-meaning");
@@ -374,11 +374,11 @@
     // pending candidate list and unlocks the (kana-only) reading.
     private void OnJapaneseChanged(string value)
     {
-        _vocab.Japanese = value;
-        _readingLocked = false;
-        if (_candidates.Count > 0)
+        vocab.Japanese = value;
+        readingLocked = false;
+        if (candidates.Count > 0)
         {
-            _candidates = new();
+            candidates = new();
         }
     }
 
@@ -388,150 +388,142 @@
         _error = null;
         _message = null;
 
-        string keyword = _vocab.Japanese?.Trim() ?? string.Empty;
+        string keyword = vocab.Japanese?.Trim() ?? string.Empty;
         if (keyword.Length == 0)
         {
             return;
         }
 
-        _searching = true;
-        _candidates = new();
-        _searchedFor = keyword;
+        searching = true;
+        candidates = new();
+        searchedFor = keyword;
         StateHasChanged();
         try
         {
-            _candidates = (await Jisho.SearchAsync(keyword)).ToList();
-            if (_candidates.Count == 0)
+            candidates = (await Jisho.SearchAsync(keyword)).ToList();
+            if (candidates.Count == 0)
             {
                 _error = "jisho found no matches (or it's unavailable). Press Enter for a kana-only word, or type the writing.";
             }
         }
         finally
         {
-            _searching = false;
+            searching = false;
         }
     }
 
     private void DismissCandidates()
     {
-        _candidates = new();
+        candidates = new();
     }
 
     // The user picked a writing from the jisho list.
     private void ApplyCandidate(KotoNeko.Jisho.JishoCandidate c)
     {
-        _vocab.Japanese = c.DisplayWriting;
-        _vocab.Reading = c.Reading;
-        _readingLocked = false;
+        vocab.Japanese = c.DisplayWriting;
+        vocab.Reading = c.Reading;
+        readingLocked = false;
 
-        if (_meanings.Count > 0) {
-            _meanings.Clear();
+        if (meanings.Count > 0) {
+            meanings.Clear();
         }
         
-        bool hasMeanings = _meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
+        bool hasMeanings = meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
         if (!hasMeanings && c.Meanings.Count > 0) {
-            _meanings = c.Meanings.Select(m => new MeaningRow { Text = m }).ToList();
+            meanings = c.Meanings.Select(m => new MeaningRow { Text = m }).ToList();
         }
 
-        _vocab.VerbClass = c.VerbClass;
+        vocab.VerbClass = c.VerbClass;
         if (c.VerbClass != VerbClass.None) {
             RegenerateConjugations();
         }
 
-        _candidates = new();
-        _focusMeaningQueued = true;
+        candidates = new();
+        focusMeaningQueued = true;
     }
 
     // Enter in the writing field: it's a kana-only word, so the reading is the
     // same kana. Lock the (now redundant) reading and jump to the meanings.
     private void UseKanaOnly()
     {
-        string kana = _vocab.Japanese?.Trim() ?? string.Empty;
+        string kana = vocab.Japanese?.Trim() ?? string.Empty;
         if (kana.Length == 0)
         {
             return;
         }
 
-        _vocab.Reading = kana;
-        _readingLocked = true;
-        _candidates = new();
-        _focusMeaningQueued = true;
+        vocab.Reading = kana;
+        readingLocked = true;
+        candidates = new();
+        focusMeaningQueued = true;
     }
 
     private async Task FetchAudioAsync()
     {
-        _audioError = null;
-        if (string.IsNullOrWhiteSpace(_vocab.Japanese))
-        {
-            _audioError = "Enter the Japanese word first.";
+        audioError = null;
+        if (string.IsNullOrWhiteSpace(vocab.Japanese)) {
+            audioError = "Enter the Japanese word first.";
             return;
         }
 
-        _fetchingAudio = true;
+        fetchingAudio = true;
         bool anyFetched = false;
         List<string> errors = new();
-        try
-        {
-            if (!_vocab.HasWordAudio && _pendingWordAudio is null)
-            {
-                try
-                {
-                    _pendingWordAudio = (await TtsService.SynthesiseAsync(_vocab.Japanese)).Audio;
+        try {
+            if (!vocab.HasWordAudio && pendingWordAudio is null) {
+                try {
+                    pendingWordAudio = (await TtsService.SynthesiseAsync(vocab.Japanese)).Audio;
                     anyFetched = true;
+                } catch (Exception ex) { 
+                    errors.Add($"Word: {ex.Message}"); 
                 }
-                catch (Exception ex) { errors.Add($"Word: {ex.Message}"); }
             }
 
-            if (!string.IsNullOrWhiteSpace(_vocab.ContextSentence) && !_vocab.HasSentenceAudio && _pendingSentenceAudio is null)
-            {
-                try
-                {
-                    _pendingSentenceAudio = (await TtsService.SynthesiseAsync(_vocab.ContextSentence)).Audio;
+            if (!string.IsNullOrWhiteSpace(vocab.ContextSentence) && !vocab.HasSentenceAudio && pendingSentenceAudio is null) {
+                try {
+                    pendingSentenceAudio = (await TtsService.SynthesiseAsync(vocab.ContextSentence)).Audio;
                     anyFetched = true;
+                } catch (Exception ex) { 
+                    errors.Add($"Sentence: {ex.Message}"); 
                 }
-                catch (Exception ex) { errors.Add($"Sentence: {ex.Message}"); }
             }
 
-            if (_vocab.IsVerb)
-            {
-                foreach (EditableConjugation c in _conjugations)
-                {
-                    if (c.HasAudio || _pendingConjugationAudio.ContainsKey((c.Form, c.Polarity)) || string.IsNullOrWhiteSpace(c.Kana))
+            if (vocab.IsVerb) {
+                foreach (EditableConjugation c in conjugations) {
+                    if (c.HasAudio || pendingConjugationAudio.ContainsKey((c.Form, c.Polarity)) || string.IsNullOrWhiteSpace(c.Kana))
                         continue;
-                    try
-                    {
-                        _pendingConjugationAudio[(c.Form, c.Polarity)] = (await TtsService.SynthesiseAsync(c.Kana)).Audio;
+                    try {
+                        pendingConjugationAudio[(c.Form, c.Polarity)] = (await TtsService.SynthesiseAsync(c.Kana)).Audio;
                         anyFetched = true;
+                    } catch (Exception ex) { 
+                        errors.Add($"{ConjugationLabels.Describe(c.Form, c.Polarity)}: {ex.Message}"); 
                     }
-                    catch (Exception ex) { errors.Add($"{ConjugationLabels.Describe(c.Form, c.Polarity)}: {ex.Message}"); }
                 }
             }
 
             if (anyFetched)
-                _audioChanged = true;
+                audioChanged = true;
 
             if (errors.Count > 0)
-                _audioError = errors.Count == 1
+                audioError = errors.Count == 1
                     ? $"Fetch failed: {errors[0]}"
                     : $"{errors.Count} fetches failed. First: {errors[0]}";
-        }
-        finally
-        {
-            _fetchingAudio = false;
+        } finally {
+            fetchingAudio = false;
         }
     }
 
     private async Task PlayWordAudioAsync()
     {
-        if (_pendingWordAudio is null) return;
-        try { await JS.InvokeVoidAsync("kotoneko.playAudioBytes", _pendingWordAudio); }
+        if (pendingWordAudio is null) return;
+        try { await JS.InvokeVoidAsync("kotoneko.playAudioBytes", pendingWordAudio); }
         catch { }
     }
 
     private async Task PlaySentenceAudioAsync()
     {
-        if (_pendingSentenceAudio is null) return;
-        try { await JS.InvokeVoidAsync("kotoneko.playAudioBytes", _pendingSentenceAudio); }
+        if (pendingSentenceAudio is null) return;
+        try { await JS.InvokeVoidAsync("kotoneko.playAudioBytes", pendingSentenceAudio); }
         catch { }
     }
 
@@ -540,7 +532,7 @@
         _error = null;
         _message = null;
 
-        if (string.IsNullOrWhiteSpace(_vocab.Japanese))
+        if (string.IsNullOrWhiteSpace(vocab.Japanese))
         {
             _error = "Enter the Japanese writing first.";
             return;
@@ -549,7 +541,7 @@
         _busy = true;
         try
         {
-            KotoNeko.Jisho.JishoLookupResult result = await Jisho.LookupAsync(_vocab.Japanese);
+            KotoNeko.Jisho.JishoLookupResult result = await Jisho.LookupAsync(vocab.Japanese);
             if (result.Error is not null)
             {
                 _error = $"jisho lookup failed: {result.Error}";
@@ -564,18 +556,18 @@
 
             if (!string.IsNullOrWhiteSpace(result.Reading))
             {
-                _vocab.Reading = result.Reading;
-                _readingLocked = false;
+                vocab.Reading = result.Reading;
+                readingLocked = false;
             }
 
             // Fill meanings as separate rows if the user hasn't entered any yet.
-            bool hasMeanings = _meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
+            bool hasMeanings = meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
             if (!hasMeanings && result.Meanings.Count > 0)
             {
-                _meanings = result.Meanings.Select(m => new MeaningRow { Text = m }).ToList();
+                meanings = result.Meanings.Select(m => new MeaningRow { Text = m }).ToList();
             }
 
-            _vocab.VerbClass = result.VerbClass;
+            vocab.VerbClass = result.VerbClass;
 
             if (result.VerbClass != VerbClass.None)
             {
@@ -596,32 +588,30 @@
     private async Task SaveAsync()
     {
         _error = null;
-        if (!CanSave)
-        {
+        if (!CanSave) {
             _error = "Japanese, reading, and at least one meaning are required.";
             return;
         }
 
         // The service trims, de-duplicates, drops blanks, and assigns sort order.
-        _vocab.Meanings = _meanings
+        vocab.Meanings = meanings
             .Select(m => new VocabularyMeaning { Text = m.Text })
             .ToList();
 
-        List<ConjugationResult> conjugations = _vocab.VerbClass == VerbClass.None
+        List<ConjugationResult> conjugations = vocab.VerbClass == VerbClass.None
             ? new()
-            : _conjugations
+            : this.conjugations
                 .Where(c => !string.IsNullOrWhiteSpace(c.Kana))
                 .Select(c => new ConjugationResult(c.Form, c.Polarity, c.Kana.Trim()))
                 .ToList();
 
-        int savedId = await VocabularyService.SaveAsync(_vocab, conjugations);
-        if (_audioChanged)
-        {
-            if (_pendingWordAudio is not null)
-                await VocabularyService.SaveAudioAsync(savedId, _pendingWordAudio, _pendingSentenceAudio);
-            if (_pendingConjugationAudio.Count > 0)
-                await VocabularyService.SaveConjugationAudioAsync(savedId, _pendingConjugationAudio);
-            _audioChanged = false;
+        int savedId = await VocabularyService.SaveAsync(vocab, conjugations);
+        if (audioChanged) {
+            if (pendingWordAudio is not null)
+                await VocabularyService.SaveAudioAsync(savedId, pendingWordAudio, pendingSentenceAudio);
+            if (pendingConjugationAudio.Count > 0)
+                await VocabularyService.SaveConjugationAudioAsync(savedId, pendingConjugationAudio);
+            audioChanged = false;
         }
         Nav.NavigateTo("/vocab");
     }

@@ -56,14 +56,12 @@ public class ReviewService
                 && v.Srs.NextReviewAt <= now)
             .OrderBy(v => v.Srs!.NextReviewAt);
 
-        if (max is int cap)
-        {
+        if (max is int cap) {
             query = query.Take(cap);
         }
 
         List<Vocabulary> items = await query.ToListAsync();
-        if (items.Count == 0)
-        {
+        if (items.Count == 0) {
             return null;
         }
 
@@ -83,19 +81,16 @@ public class ReviewService
             .Where(v => !v.IsAsleep && v.Srs == null)
             .OrderBy(v => v.CreatedAt);
 
-        if (max is int cap)
-        {
+        if (max is int cap) {
             query = query.Take(cap);
         }
 
         List<Vocabulary> items = await query.ToListAsync();
-        if (items.Count == 0)
-        {
+        if (items.Count == 0) {
             return null;
         }
 
-        List<ReviewCard> cards = items.Select(v =>
-        {
+        List<ReviewCard> cards = items.Select(v => {
             SrsItem srs = v.Srs ?? new SrsItem { VocabularyId = v.Id, Stage = SrsStage.Locked };
             return BuildCard(v, srs);
         }).ToList();
@@ -104,29 +99,23 @@ public class ReviewService
     }
 
     /// <summary>Persist the SRS changes and review logs accumulated by a session.</summary>
-    public async Task PersistAsync(ReviewSession.PendingResults results)
+    public async Task PersistAsync(ReviewSession.PendingResults results) 
     {
-        if (results.SrsItems.Count == 0 && results.Logs.Count == 0)
-        {
+        if (results.SrsItems.Count == 0 && results.Logs.Count == 0) {
             return;
         }
 
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
 
-        foreach (SrsItem srs in results.SrsItems)
-        {
-            if (srs.Id == 0)
-            {
+        foreach (SrsItem srs in results.SrsItems) {
+            if (srs.Id == 0) {
                 db.SrsItems.Add(srs);
-            }
-            else
-            {
+            } else {
                 db.SrsItems.Update(srs);
             }
         }
 
-        foreach (ReviewLog log in results.Logs)
-        {
+        foreach (ReviewLog log in results.Logs) {
             db.ReviewLogs.Add(log);
         }
 
@@ -143,17 +132,14 @@ public class ReviewService
 
         string allMeaningsPrompt = string.Join(", ", meanings);
 
-        List<ReviewQuestion> questions = new()
-        {
-            new ReviewQuestion
-            {
+        List<ReviewQuestion> questions = new() {
+            new ReviewQuestion() {
                 Type = QuestionType.Meaning,
                 Prompt = "Meaning",
                 ExpectedPrimary = primaryMeaning,
                 ExpectedAlternates = alternateMeanings,
             },
-            new ReviewQuestion
-            {
+            new ReviewQuestion() {
                 Type = QuestionType.Production,
                 Prompt = allMeaningsPrompt,
                 ExpectedPrimary = v.Reading,
@@ -163,10 +149,8 @@ public class ReviewService
 
         // The reading is only quizzed for kanji words whose reading we're actually
         // learning. Kana-only words (no kanji) and furigana items skip it.
-        if (v.AsksReading)
-        {
-            questions.Add(new ReviewQuestion
-            {
+        if (v.AsksReading) {
+            questions.Add(new ReviewQuestion() {
                 Type = QuestionType.Reading,
                 Prompt = "Reading",
                 ExpectedPrimary = v.Reading,
@@ -174,11 +158,9 @@ public class ReviewService
             });
         }
 
-        if (v.VerbClass != VerbClass.None && v.Conjugations.Count > 0)
-        {
+        if (v.VerbClass != VerbClass.None && v.Conjugations.Count > 0) {
             Conjugation chosen = v.Conjugations[Random.Shared.Next(v.Conjugations.Count)];
-            questions.Add(new ReviewQuestion
-            {
+            questions.Add(new ReviewQuestion() {
                 Type = QuestionType.Conjugation,
                 Prompt = ConjugationLabels.Describe(chosen.Form, chosen.Polarity),
                 ExpectedPrimary = chosen.ExpectedKana,
@@ -188,8 +170,7 @@ public class ReviewService
             });
         }
 
-        return new ReviewCard
-        {
+        return new ReviewCard() {
             Vocabulary = v,
             Srs = srs,
             Questions = questions,
