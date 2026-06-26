@@ -158,6 +158,10 @@ public class VocabularyService
             vocab.HasWordAudio = wordAudio.Length > 0;
             vocab.HasSentenceAudio = sentenceAudio?.Length > 0 == true;
         }
+        
+        if (vocab?.HasSentenceAudio == true) {
+            vocab.PlaySentenceAudioInReview = true;
+        }
 
         await db.SaveChangesAsync();
     }

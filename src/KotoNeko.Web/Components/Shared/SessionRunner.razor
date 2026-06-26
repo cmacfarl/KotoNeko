@@ -60,7 +60,7 @@ else
                 }
             </div>
             
-            @if (_mode == Mode.ShowingResult) {
+            @if (_mode == Mode.ShowingResult || _mode == Mode.PlayingAudio) {
                 <div class="kn-extra">
                     @if (q.Type == QuestionType.Reading) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@card.Vocabulary.Reading</span></div>
@@ -131,7 +131,7 @@ else
     /// <summary>Invoked when the user exits or the session completes (after persist).</summary>
     [Parameter] public EventCallback OnExit { get; set; }
 
-    private enum Mode { AwaitingInput, ShowingResult }
+    private enum Mode { AwaitingInput, PlayingAudio, ShowingResult }
 
     private Mode _mode = Mode.AwaitingInput;
     private string _input = string.Empty;
@@ -183,6 +183,10 @@ else
         if (e.Key != "Enter") {
             return;
         }
+        
+        if (_mode == Mode.PlayingAudio) {
+            return;
+        }
 
         if (_mode == Mode.ShowingResult) {
             Advance();
@@ -220,21 +224,33 @@ else
         _closeHint = null;
         _lastJudgment = outcome.Judgment;
         _lastCorrectAnswer = outcome.CorrectAnswer;
-        _mode = Mode.ShowingResult;
+        _mode = Mode.PlayingAudio;
 
         if (outcome.Judgment == AnswerJudgment.Correct && _displayCard is not null) {
+        
+            StateHasChanged();
+            await Task.Yield();
+            
             Vocabulary vocab = _displayCard.Vocabulary;
-            if (question.Type == QuestionType.Conjugation && question.ConjugationId is int conjId) {
-                try { await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/conjugation/{conjId}/audio"); }
-                catch { }
-            } else if (vocab.HasWordAudio) {
-                string audioType = vocab.PlaySentenceAudioInReview && vocab.HasSentenceAudio
-                    ? "sentence"
-                    : "word";
-                try { await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/{audioType}"); }
-                catch { }
+            try {
+                if (question.Type == QuestionType.Conjugation && question.ConjugationId is int conjId) {
+                    await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/conjugation/{conjId}/audio"); 
+                } else if (vocab.HasWordAudio) {
+                    Console.WriteLine("Starting word audio");
+                    await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/word"); 
+                    Console.WriteLine("Finished word audio");
+                    if (vocab.HasSentenceAudio) {
+                        await Task.Delay(800);
+                        Console.WriteLine("Starting sentence audio");
+                        await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/sentence"); 
+                        Console.WriteLine("Finished sentence audio");
+                    } 
+                }
+            } catch {
+                Console.WriteLine("Failed to play audio for " + vocab.Reading);
             }
         }
+        _mode = Mode.ShowingResult;
     }
 
     private void Advance() {
@@ -336,7 +352,7 @@ else
         _ => "kn-prompt-vocab",
     };
 
-    private string AnswerStateClass => _mode == Mode.ShowingResult
+    private string AnswerStateClass => (_mode == Mode.ShowingResult || _mode == Mode.PlayingAudio)
         ? (_lastJudgment == AnswerJudgment.Correct ? "correct" : "incorrect")
         : string.Empty;
 

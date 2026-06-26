@@ -265,8 +265,12 @@ window.kotoneko = window.kotoneko || {};
 
     // Play audio from a URL (used for review autoplay).
     k.playAudio = function (url) {
-        const audio = new Audio(url);
-        audio.play().catch(function () {});
+        return new Promise((resolve, reject) => {
+            const audio = new Audio(url);
+            audio.addEventListener('ended', () => resolve());
+            audio.addEventListener('error', (e) => reject(e));
+            audio.play().catch(function (reject) {});
+        });
     };
 
     // Play a sequence of audio URLs in order. After each clip ends, wait
