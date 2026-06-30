@@ -79,10 +79,10 @@ else
                     }
 
                     @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence)) {
-                        <div class="kn-extra-row"><span class="kn-extra-label">Context</span> @card.Vocabulary.ContextSentence</div>
+                        <div class="kn-extra-row">@card.Vocabulary.ContextSentence</div>
                     }
                     @if (!string.IsNullOrWhiteSpace(card.Vocabulary.Memo)) {
-                        <div class="kn-extra-row"><span class="kn-extra-label">Memo</span> @card.Vocabulary.Memo</div>
+                        <div class="kn-extra-row">@card.Vocabulary.Memo</div>
                     }
                 </div>
             } else {
@@ -93,13 +93,6 @@ else
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
                     } else if (q.Type == QuestionType.Meaning) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
-                    }
-
-                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence)) {
-                        <div class="kn-extra-row"><span class="kn-extra-label">Context</span></div>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.Memo)) {
-                        <div class="kn-extra-row"><span class="kn-extra-label">Memo</span></div>
                     }
                 </div>
             }

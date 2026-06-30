@@ -350,14 +350,14 @@ h1, h2, h3 {
     color: #fff;
     text-align: center;
     padding: 1rem;
-    min-height: 300px;
-    max-height: 400px;
+    min-height: 350px;
+    max-height: 450px;
 }
 
 .kn-prompt-vocab { background: var(--kn-vocab); }
 .kn-prompt-reading { background: var(--kn-burned); }
 .kn-prompt-production { background: var(--kn-burned); }
-.kn-prompt-meaning { background: #f9f9f9; color: var(--kn-ink); }
+.kn-prompt-meaning { background: var(--kn-guru); }
 .kn-prompt-conjugation { background: var(--kn-guru); }
 
 .kn-prompt-word {
@@ -486,8 +486,9 @@ h1, h2, h3 {
     text-align: center;
     padding: 0.75rem 1rem;
     font-size: 0.9rem;
-    color: #555;
+    color: #FFFFFF;
     max-height: 30vh;
+    min-height: 8rem;
     overflow-y: auto;
 }
 
@@ -521,12 +522,12 @@ h1, h2, h3 {
 
 .kn-jp { 
     margin-right: 8px;
-    font-size: 1.15rem; 
+    font-size: 2rem; 
 }
 
 .kn-jp-reading {
     margin-right: 8px;
-    font-size: 1.15rem;
+    font-size: 2rem;
     color: var(--kn-panel);
 }
 
