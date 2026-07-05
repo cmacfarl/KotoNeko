@@ -32,6 +32,8 @@ public class ReviewSession
     private readonly Stack<Memento> _undo = new();
     private readonly DateTime _now;
     private readonly Random _random;
+    private readonly HashSet<int> _persistedCardIndices = new();
+    private int _persistedLogCount = 0;
 
     public ReviewSession(IReadOnlyList<ReviewCard> cards, SessionKind kind, DateTime now, int randomSeed)
     {
@@ -138,14 +140,37 @@ public class ReviewSession
     }
 
     /// <summary>
-    /// Build the database changes accumulated so far: the mutated SRS items and the
-    /// review logs for finalised cards. Safe to call when the session ends (or is
-    /// abandoned) to persist progress.
+    /// Returns only the data for cards finalised since the last call to this method.
+    /// Call after each <see cref="SubmitOutcome.CardFinalised"/> to persist incrementally.
+    /// </summary>
+    public PendingResults BuildIncrementalResults()
+    {
+        List<SrsItem> newItems = new();
+        for (int i = 0; i < _cards.Count; i++)
+        {
+            if (_cards[i].Finalised && _persistedCardIndices.Add(i))
+                newItems.Add(_cards[i].Srs);
+        }
+        List<ReviewLog> newLogs = _pendingLogs.Skip(_persistedLogCount).ToList();
+        _persistedLogCount = _pendingLogs.Count;
+        return new PendingResults(newItems, newLogs);
+    }
+
+    /// <summary>
+    /// Build any remaining database changes not yet written by incremental persists.
+    /// Safe to call at session end or on abandonment.
     /// </summary>
     public PendingResults BuildPendingResults()
     {
-        List<SrsItem> srsItems = _cards.Where(c => c.Finalised).Select(c => c.Srs).ToList();
-        return new PendingResults(srsItems, _pendingLogs.ToList());
+        List<SrsItem> remaining = new();
+        for (int i = 0; i < _cards.Count; i++)
+        {
+            if (_cards[i].Finalised && _persistedCardIndices.Add(i))
+                remaining.Add(_cards[i].Srs);
+        }
+        List<ReviewLog> remainingLogs = _pendingLogs.Skip(_persistedLogCount).ToList();
+        _persistedLogCount = _pendingLogs.Count;
+        return new PendingResults(remaining, remainingLogs);
     }
 
     private void FinaliseCard(ReviewCard card)

@@ -243,7 +243,18 @@ else
                 Console.WriteLine("Failed to play audio for " + vocab.Reading);
             }
         }
+        if (outcome.CardFinalised)
+            await PersistIncrementalAsync();
+
         _mode = Mode.ShowingResult;
+    }
+
+    private async Task PersistIncrementalAsync()
+    {
+        if (Session is null) return;
+        ReviewSession.PendingResults results = Session.BuildIncrementalResults();
+        if (results.SrsItems.Count > 0 || results.Logs.Count > 0)
+            await ReviewService.PersistAsync(results);
     }
 
     private void Advance() {
