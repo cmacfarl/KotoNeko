@@ -1,0 +1,59 @@
+@if (_help is not null)
+{
+    <div class="kn-conj-help-header">
+        <div class="kn-conj-help-title">@ConjugationLabels.Describe(Form, Polarity)</div>
+        <button class="kn-conj-help-close" @onclick="OnDismiss" title="Close (Escape)">✕</button>
+    </div>
+    <div class="kn-conj-help-body">
+        <p class="kn-conj-help-meaning">@_help.Meaning</p>
+        <ul class="kn-conj-help-examples">
+            @foreach (string ex in _help.EnglishExamples)
+            {
+                <li>@ex</li>
+            }
+        </ul>
+        <table class="kn-conj-rules-table">
+            <thead>
+                <tr>
+                    <th>Verb class</th>
+                    <th>Rule</th>
+                    <th>Examples</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (VerbClassRule rule in _help.Rules)
+                {
+                    <tr class="@(rule.Class == HighlightClass ? "kn-conj-highlight" : "")">
+                        <td class="kn-conj-rule-class">@rule.Label</td>
+                        <td class="kn-conj-rule-pattern">@rule.Pattern</td>
+                        <td class="kn-conj-rule-examples">
+                            @foreach (var ex in rule.Examples)
+                            {
+                                <span>@ex.Dict→@ex.Conjugated</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (_help.Note is not null)
+        {
+            <div class="kn-conj-help-note">@_help.Note</div>
+        }
+    </div>
+    <div class="kn-conj-help-hint">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>
+}
+
+@code {
+    [Parameter] public ConjugationForm Form { get; set; }
+    [Parameter] public Polarity Polarity { get; set; }
+    [Parameter] public VerbClass HighlightClass { get; set; }
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    private FormHelp? _help;
+
+    protected override void OnParametersSet()
+    {
+        _help = ConjugationHelp.Get(Form, Polarity);
+    }
+}

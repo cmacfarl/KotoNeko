@@ -113,7 +113,25 @@ else
             <button class="kn-undo-btn" disabled="@(!Session.CanUndo)" @onclick="UndoAsync" title="Undo last answer (fix a typo)">
                 ↶ Undo
             </button>
+            @if (_mode == Mode.ShowingResult && q.Type == QuestionType.Conjugation)
+            {
+                <button class="kn-conj-help-btn" @onclick="ToggleHelpPanel" title="Conjugation grammar help (?)">? Help</button>
+            }
         </div>
+
+        @if (_showConjHelp && q.Type == QuestionType.Conjugation && q.Form.HasValue && q.Polarity.HasValue)
+        {
+            <div class="kn-conj-help-overlay" @ref="_helpPanelRef" tabindex="-1"
+                 @onkeydown="OnHelpPanelKeyDown" @onclick="CloseHelpPanel">
+                <div class="kn-conj-help-panel" @onclick:stopPropagation="true">
+                    <ConjugationHelpPanel
+                        Form="q.Form.Value"
+                        Polarity="q.Polarity.Value"
+                        HighlightClass="card.Vocabulary.VerbClass"
+                        OnDismiss="CloseHelpPanel" />
+                </div>
+            </div>
+        }
 
     </div>
 }
@@ -139,7 +157,10 @@ else
     private ReviewCard? _displayCard;
     private ReviewQuestion? _displayQuestion;
     
+    private bool _showConjHelp;
+    private bool _focusPanelQueued;
     private ElementReference _inputRef;
+    private ElementReference _helpPanelRef;
     private DotNetObjectReference<SessionRunner>? _dotNetRef;
     private bool _kanaAttached;
     private readonly Stack<string> _typedHistory = new();
@@ -173,20 +194,48 @@ else
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e) {
-        if (e.Key != "Enter") {
-            return;
-        }
-        
-        if (_mode == Mode.PlayingAudio) {
+        if (_mode == Mode.PlayingAudio) return;
+
+        if (e.Key == "Escape") {
+            if (_showConjHelp) CloseHelpPanel();
             return;
         }
 
+        if (e.Key == "?") {
+            if (_mode == Mode.ShowingResult && _displayQuestion?.Type == QuestionType.Conjugation)
+                ToggleHelpPanel();
+            return;
+        }
+
+        if (e.Key != "Enter") return;
+
         if (_mode == Mode.ShowingResult) {
+            if (_showConjHelp) { CloseHelpPanel(); return; }
             Advance();
             return;
         }
 
         await SubmitAsync();
+    }
+
+    private void OnHelpPanelKeyDown(KeyboardEventArgs e) {
+        if (e.Key is "Escape" or "?") {
+            CloseHelpPanel();
+        } else if (e.Key == "Enter") {
+            CloseHelpPanel();
+            Advance();
+        }
+    }
+
+    private void ToggleHelpPanel() {
+        _showConjHelp = !_showConjHelp;
+        if (_showConjHelp) _focusPanelQueued = true;
+        else _focusQueued = true;
+    }
+
+    private void CloseHelpPanel() {
+        _showConjHelp = false;
+        _focusQueued = true;
     }
 
     private async Task SubmitAsync() {
@@ -262,6 +311,7 @@ else
         _input = string.Empty;
         answer = string.Empty;
         _closeHint = null;
+        _showConjHelp = false;
         _focusQueued = true;
         _displayCard = Session?.CurrentCard;
         _displayQuestion = Session?.CurrentQuestion;
@@ -334,6 +384,15 @@ else
             catch { /* ignore */ }
         }
         
+        if (_focusPanelQueued) {
+            _focusPanelQueued = false;
+            try {
+                await JS.InvokeVoidAsync("kotoneko.focus", _helpPanelRef);
+            } catch (JSException) {
+                // ignore focus failures
+            }
+        }
+
         if (_focusQueued) {
             _focusQueued = false;
             try {
