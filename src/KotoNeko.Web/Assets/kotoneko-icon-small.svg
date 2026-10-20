@@ -1,0 +1,27 @@
+<!-- KotoNeko app icon, simplified for 16-40px (eyes + nose instead of 言 and whiskers). Also used for wwwroot/favicon.png. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ee2a9c"/>
+      <stop offset="1" stop-color="#9a00e6"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="120" rx="56" fill="url(#shine)"/>
+  <g fill="#ffffff" stroke="#ffffff" stroke-width="14" stroke-linejoin="round">
+    <path d="M48 132 L64 48 L120 88 Z"/>
+    <path d="M208 132 L192 48 L136 88 Z"/>
+    <ellipse cx="128" cy="154" rx="84" ry="68" stroke="none"/>
+  </g>
+  <g fill="#f6b9c7" stroke="#f6b9c7" stroke-width="6" stroke-linejoin="round">
+    <path d="M70 104 L76 70 L102 88 Z"/>
+    <path d="M186 104 L180 70 L154 88 Z"/>
+  </g>
+  <ellipse cx="96" cy="150" rx="15" ry="19" fill="#5d1f73"/>
+  <ellipse cx="160" cy="150" rx="15" ry="19" fill="#5d1f73"/>
+  <path d="M116 180 L140 180 L128 194 Z" fill="#dd0093" stroke="#dd0093" stroke-width="6" stroke-linejoin="round"/>
+</svg>

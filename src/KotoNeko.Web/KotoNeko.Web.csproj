@@ -26,6 +26,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Assets\kotoneko.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>
