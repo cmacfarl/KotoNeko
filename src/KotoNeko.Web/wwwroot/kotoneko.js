@@ -272,6 +272,346 @@ window.kotoneko = window.kotoneko || {};
         }
     };
 
+    // ---------------------------------------------------------------------
+    // Japanese input: a small in-page IME, so the Windows IME can stay off.
+    // Romaji becomes kana as it is typed (the "composition", always at the end
+    // of the text). Space converts the composition with the server's offline
+    // dictionary into segments, each with kanji candidates:
+    //   Space / ↓ next candidate, ↑ previous, 1–9 pick, ← / → change segment,
+    //   Shift+← / → shrink or grow the segment, F7 katakana, F6 hiragana,
+    //   Enter commit, Esc back to kana (or drop the kana), Backspace back to kana.
+    // Enter with nothing being composed submits. All state lives here; the
+    // component only hears OnImeChanged(text, kana) and OnImeSubmit().
+    // options.learn (default true): remember spellings the user picks, and put
+    // past picks first. Off where kanji choice is being tested (dictation).
+    // ---------------------------------------------------------------------
+    function hiraganaToKatakana(s) {
+        return s.replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    }
+
+    function katakanaToHiragana(s) {
+        return s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    }
+
+    function isAllKana(s) {
+        return /^[ぁ-ゖァ-ヶー]+$/.test(s);
+    }
+
+    async function postJson(url, body) {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            throw new Error("Conversion failed: " + response.status);
+        }
+        return response.status === 204 ? null : response.json();
+    }
+
+    k.japaneseInput = {
+        attach: function (input, strip, dotNetRef, options) {
+            if (!input || input._kotonekoIme) {
+                return;
+            }
+            const learn = !(options && options.learn === false);
+
+            const s = {
+                committed: "",   // text before the composition
+                chunks: [],      // committed pieces: { text, kana } (kana null if unknown)
+                comp: "",        // kana being composed (may end in unfinished romaji)
+                segs: null,      // while converting: [{ reading, candidates, index }]
+                focus: 0,        // segment being edited
+                request: 0,      // latest conversion request, to ignore stale replies
+                osIme: false     // the Windows IME was seen composing
+            };
+
+            const display = () => s.segs
+                ? s.segs.map(g => g.candidates[g.index]).join("")
+                : s.comp;
+
+            function committedKana() {
+                return s.chunks.every(c => c.kana !== null) ? s.chunks.map(c => c.kana).join("") : null;
+            }
+
+            function notify() {
+                dotNetRef.invokeMethodAsync("OnImeChanged", s.committed, committedKana());
+            }
+
+            function render() {
+                input.value = s.committed + display();
+                const end = input.value.length;
+                try { input.setSelectionRange(end, end); } catch (e) { /* ignore */ }
+                renderStrip();
+            }
+
+            function renderStrip() {
+                strip.textContent = "";
+                if (s.osIme) {
+                    const warn = document.createElement("div");
+                    warn.className = "kn-ime-warning";
+                    warn.textContent = "Turn the Windows IME off — KotoNeko converts for you.";
+                    strip.appendChild(warn);
+                }
+                if (s.segs) {
+                    const row = document.createElement("div");
+                    row.className = "kn-ime-segments";
+                    s.segs.forEach((g, i) => {
+                        const span = document.createElement("span");
+                        span.className = "kn-ime-seg" + (i === s.focus ? " active" : "");
+                        span.textContent = g.candidates[g.index];
+                        row.appendChild(span);
+                    });
+                    strip.appendChild(row);
+
+                    const focused = s.segs[s.focus];
+                    const list = document.createElement("ol");
+                    list.className = "kn-ime-candidates";
+                    focused.candidates.slice(0, 9).forEach((c, i) => {
+                        const li = document.createElement("li");
+                        li.className = i === focused.index ? "active" : "";
+                        const n = document.createElement("span");
+                        n.className = "kn-ime-num";
+                        n.textContent = String(i + 1);
+                        li.appendChild(n);
+                        li.appendChild(document.createTextNode(c));
+                        list.appendChild(li);
+                    });
+                    strip.appendChild(list);
+                } else if (s.comp) {
+                    const hint = document.createElement("div");
+                    hint.className = "kn-ime-hint";
+                    hint.textContent = "Space converts · Enter keeps the kana";
+                    strip.appendChild(hint);
+                }
+            }
+
+            // Finish any trailing romaji: a final n is ん.
+            function finishKana(text) {
+                return toHiragana(text.endsWith("n") ? text.slice(0, -1) + "nn" : text);
+            }
+
+            function commitChunk(text, kana) {
+                if (text.length === 0) {
+                    return;
+                }
+                s.chunks.push({ text: text, kana: kana });
+                s.committed += text;
+            }
+
+            // Remember the segments where the user picked something other than the
+            // default; accepting a default teaches nothing.
+            function rememberChoices() {
+                const picked = s.segs
+                    .filter(g => g.index !== 0)
+                    .map(g => ({ reading: g.reading, written: g.candidates[g.index] }));
+                if (learn && picked.length > 0) {
+                    postJson("/api/ime/learn", { choices: picked }).catch(e => console.warn(e));
+                }
+            }
+
+            function commit() {
+                if (s.segs) {
+                    rememberChoices();
+                    commitChunk(display(), s.segs.map(g => g.reading).join(""));
+                } else if (s.comp) {
+                    const kana = finishKana(s.comp);
+                    commitChunk(kana, isAllKana(kana) ? kana : null);
+                }
+                s.comp = "";
+                s.segs = null;
+                s.focus = 0;
+                render();
+                notify();
+            }
+
+            async function convert() {
+                const kana = finishKana(s.comp);
+                s.comp = kana;
+                const id = ++s.request;
+                try {
+                    const segs = await postJson("/api/ime/convert", { kana: kana, learn: learn });
+                    if (id !== s.request || segs.length === 0) {
+                        return;
+                    }
+                    s.segs = segs.map(g => ({ reading: g.reading, candidates: g.candidates, index: 0 }));
+                    s.focus = 0;
+                } catch (e) {
+                    console.warn(e);
+                }
+                render();
+            }
+
+            // Move the boundary after the focused segment by `delta` kana.
+            async function resize(delta) {
+                const rest = s.segs.slice(s.focus).map(g => g.reading).join("");
+                const length = s.segs[s.focus].reading.length + delta;
+                if (length < 1 || length > rest.length) {
+                    return;
+                }
+                const head = rest.slice(0, length);
+                const tail = rest.slice(length);
+                const id = ++s.request;
+                try {
+                    const [candidates, tailSegs] = await Promise.all([
+                        postJson("/api/ime/candidates", { kana: head, learn: learn }),
+                        tail ? postJson("/api/ime/convert", { kana: tail, learn: learn }) : Promise.resolve([])
+                    ]);
+                    if (id !== s.request || !s.segs) {
+                        return;
+                    }
+                    s.segs = s.segs.slice(0, s.focus)
+                        .concat([{ reading: head, candidates: candidates, index: 0 }])
+                        .concat(tailSegs.map(g => ({ reading: g.reading, candidates: g.candidates, index: 0 })));
+                } catch (e) {
+                    console.warn(e);
+                }
+                render();
+            }
+
+            function cycle(step) {
+                const g = s.segs[s.focus];
+                g.index = (g.index + step + g.candidates.length) % g.candidates.length;
+                render();
+            }
+
+            // Put a specific spelling on the focused segment (used by F6/F7).
+            function useSpelling(text) {
+                const g = s.segs[s.focus];
+                let i = g.candidates.indexOf(text);
+                if (i < 0) {
+                    g.candidates = g.candidates.concat([text]);
+                    i = g.candidates.length - 1;
+                }
+                g.index = i;
+                render();
+            }
+
+            const onKeyDown = function (e) {
+                if (e.isComposing || e.keyCode === 229) {
+                    // The Windows IME is handling this key.
+                    if (!s.osIme) { s.osIme = true; renderStrip(); }
+                    return;
+                }
+
+                const handled = () => { e.preventDefault(); e.stopPropagation(); };
+                const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+
+                if (s.segs) {
+                    if (e.key === " " || e.key === "ArrowDown") { handled(); cycle(1); return; }
+                    if (e.key === "ArrowUp") { handled(); cycle(-1); return; }
+                    if (e.key === "ArrowRight" && e.shiftKey) { handled(); resize(1); return; }
+                    if (e.key === "ArrowLeft" && e.shiftKey) { handled(); resize(-1); return; }
+                    if (e.key === "ArrowRight") { handled(); s.focus = Math.min(s.focus + 1, s.segs.length - 1); render(); return; }
+                    if (e.key === "ArrowLeft") { handled(); s.focus = Math.max(s.focus - 1, 0); render(); return; }
+                    if (e.key === "Enter") { handled(); commit(); return; }
+                    if (e.key === "Escape" || e.key === "Backspace") { handled(); s.segs = null; render(); return; }
+                    if (e.key === "F7") { handled(); useSpelling(hiraganaToKatakana(s.segs[s.focus].reading)); return; }
+                    if (e.key === "F6") { handled(); useSpelling(katakanaToHiragana(s.segs[s.focus].reading)); return; }
+                    if (plain && /^[1-9]$/.test(e.key)) {
+                        const n = Number(e.key) - 1;
+                        if (n < s.segs[s.focus].candidates.length) { handled(); s.segs[s.focus].index = n; render(); }
+                        return;
+                    }
+                    // Any other typing keeps the conversion and starts afresh.
+                    if (plain && e.key.length === 1) { commit(); }
+                    return;
+                }
+
+                if (s.comp) {
+                    if (e.key === " ") { handled(); convert(); return; }
+                    if (e.key === "Enter") { handled(); commit(); return; }
+                    if (e.key === "Escape") { handled(); s.comp = ""; render(); return; }
+                    if (e.key === "F7") { handled(); s.comp = hiraganaToKatakana(finishKana(s.comp)); render(); return; }
+                    if (e.key === "F6") { handled(); s.comp = katakanaToHiragana(finishKana(s.comp)); render(); return; }
+                    return;
+                }
+
+                if (e.key === "Enter") { handled(); dotNetRef.invokeMethodAsync("OnImeSubmit"); return; }
+                if (e.key === " ") { handled(); commitChunk(" ", " "); render(); notify(); return; }
+            };
+
+            const onInput = function () {
+                const value = input.value;
+                if (s.segs) {
+                    // Typing during a conversion is handled on keydown; just redraw.
+                    render();
+                    return;
+                }
+
+                if (value.startsWith(s.committed)) {
+                    s.comp = toHiragana(value.slice(s.committed.length));
+                    render();
+                    return;
+                }
+
+                // The committed text itself was edited (e.g. Backspace past the
+                // composition): keep the chunks that are still intact.
+                let kept = 0;
+                let length = 0;
+                while (kept < s.chunks.length && value.startsWith(s.committed.slice(0, length + s.chunks[kept].text.length))) {
+                    length += s.chunks[kept].text.length;
+                    kept++;
+                }
+                s.chunks = s.chunks.slice(0, kept);
+                const rest = value.slice(length);
+                if (rest) {
+                    s.chunks.push({ text: rest, kana: isAllKana(rest) ? rest : null });
+                }
+                s.committed = value;
+                s.comp = "";
+                renderStrip();
+                notify();
+            };
+
+            const onCompositionStart = function () {
+                s.osIme = true;
+                renderStrip();
+            };
+
+            // Leaving the field keeps what was being composed.
+            const onBlur = function () {
+                if (s.comp || s.segs) {
+                    commit();
+                }
+            };
+
+            input.addEventListener("keydown", onKeyDown);
+            input.addEventListener("input", onInput);
+            input.addEventListener("compositionstart", onCompositionStart);
+            input.addEventListener("blur", onBlur);
+            input._kotonekoIme = {
+                state: s,
+                render: render,
+                notify: notify,
+                remove: function () {
+                    input.removeEventListener("keydown", onKeyDown);
+                    input.removeEventListener("input", onInput);
+                    input.removeEventListener("compositionstart", onCompositionStart);
+                    input.removeEventListener("blur", onBlur);
+                }
+            };
+        },
+
+        // Empty the field (e.g. for the next dictation sentence).
+        clear: function (input) {
+            const ime = input && input._kotonekoIme;
+            if (!ime) {
+                return;
+            }
+            Object.assign(ime.state, { committed: "", chunks: [], comp: "", segs: null, focus: 0, request: ime.state.request + 1 });
+            ime.render();
+            ime.notify();
+        },
+
+        detach: function (input) {
+            if (input && input._kotonekoIme) {
+                input._kotonekoIme.remove();
+                input._kotonekoIme = null;
+            }
+        }
+    };
+
     // Play audio from a URL (used for review autoplay), always at the speed it
     // was generated at. Resolves when the clip ends; rejects if it cannot load or
     // play, so callers never wait forever (e.g. when the browser blocks autoplay).

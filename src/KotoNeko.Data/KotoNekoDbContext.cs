@@ -20,6 +20,9 @@ public class KotoNekoDbContext : DbContext
     public DbSet<VocabularyAudio> VocabularyAudios => Set<VocabularyAudio>();
     public DbSet<ConjugatedAudio> ConjugatedAudios => Set<ConjugatedAudio>();
     public DbSet<StudySettings> StudySettings => Set<StudySettings>();
+    public DbSet<DictionaryEntry> DictionaryEntries => Set<DictionaryEntry>();
+    public DbSet<DictionaryImport> DictionaryImports => Set<DictionaryImport>();
+    public DbSet<ImeChoice> ImeChoices => Set<ImeChoice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -147,6 +150,32 @@ public class KotoNekoDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.HasData(new StudySettings());
+        });
+
+        // Readings and spellings compare exactly: the default Unicode collations
+        // treat は/ば/ぱ and hiragana/katakana as equal, which would merge homophones.
+        modelBuilder.Entity<DictionaryEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Reading).HasMaxLength(DictionaryEntry.MaxLength).UseCollation("utf8mb4_bin").IsRequired();
+            entity.Property(e => e.Written).HasMaxLength(DictionaryEntry.MaxLength).UseCollation("utf8mb4_bin").IsRequired();
+            entity.HasIndex(e => e.Reading);
+        });
+
+        modelBuilder.Entity<ImeChoice>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Reading).HasMaxLength(DictionaryEntry.MaxLength).UseCollation("utf8mb4_bin").IsRequired();
+            entity.Property(e => e.Written).HasMaxLength(DictionaryEntry.MaxLength).UseCollation("utf8mb4_bin").IsRequired();
+            entity.HasIndex(e => new { e.Reading, e.Written }).IsUnique();
+        });
+
+        modelBuilder.Entity<DictionaryImport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Source).HasMaxLength(200);
+            entity.Property(e => e.Version).HasMaxLength(100);
+            entity.Property(e => e.DictionaryDate).HasMaxLength(50);
         });
     }
 }

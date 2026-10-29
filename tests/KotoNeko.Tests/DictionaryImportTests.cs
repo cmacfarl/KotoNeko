@@ -1,0 +1,191 @@
+using System.IO.Compression;
+using System.Text;
+using System.Text.Json;
+using KotoNeko.Core.Domain;
+using KotoNeko.Core.Ime;
+using KotoNeko.Data.Dictionary;
+using Xunit;
+
+namespace KotoNeko.Tests;
+
+public class DictionaryImportTests
+{
+    // A small file in the jmdict-simplified shape, with header values to skip.
+    private const string SampleJson = """
+        {
+          "version": "3.6.2",
+          "languages": ["eng"],
+          "commonOnly": false,
+          "dictDate": "2026-10-26",
+          "dictRevisions": ["1.09"],
+          "tags": { "v5u": "Godan verb with 'u' ending", "uk": "usually kana" },
+          "words": [
+            {
+              "id": "1",
+              "kanji": [ { "common": true, "text": "会う", "tags": [] }, { "common": false, "text": "遇う", "tags": ["rK"] } ],
+              "kana": [ { "common": true, "text": "あう", "tags": [], "appliesToKanji": ["*"] } ],
+              "sense": [
+                { "partOfSpeech": ["v5u", "vi"], "misc": [], "gloss": [ { "lang": "eng", "text": "to meet" } ] },
+                { "partOfSpeech": ["v5u", "vi"], "misc": ["uk"], "gloss": [ { "lang": "eng", "text": "to encounter" } ] }
+              ]
+            },
+            {
+              "id": "2",
+              "kanji": [ { "common": true, "text": "勉強", "tags": [] } ],
+              "kana": [ { "common": true, "text": "べんきょう", "tags": [], "appliesToKanji": ["*"] } ],
+              "sense": [ { "partOfSpeech": ["n", "vs", "vt"], "misc": [] } ]
+            },
+            {
+              "id": "3",
+              "kanji": [ { "common": true, "text": "珈琲", "tags": ["ateji"] }, { "common": false, "text": "咖啡", "tags": ["sK"] } ],
+              "kana": [ { "common": true, "text": "コーヒー", "tags": [], "appliesToKanji": ["*"] } ],
+              "sense": [ { "partOfSpeech": ["n"], "misc": ["uk"] } ]
+            },
+            {
+              "id": "4",
+              "kanji": [ { "common": true, "text": "今日", "tags": [] } ],
+              "kana": [
+                { "common": true, "text": "きょう", "tags": [], "appliesToKanji": ["*"] },
+                { "common": false, "text": "こんにち", "tags": [], "appliesToKanji": ["今日"] }
+              ],
+              "sense": [ { "partOfSpeech": ["n", "adv"], "misc": [] } ]
+            }
+          ]
+        }
+        """;
+
+    private static async Task<(JmdictReader Reader, List<JmdictWord> Words)> Read(int bufferSize)
+    {
+        JmdictReader reader = new(bufferSize);
+        List<JmdictWord> words = new();
+        await reader.ReadAsync(new MemoryStream(Encoding.UTF8.GetBytes(SampleJson)), words.Add);
+        return (reader, words);
+    }
+
+    [Theory]
+    [InlineData(16)]       // forces a refill and a buffer resize inside nearly every token
+    [InlineData(100)]
+    [InlineData(1 << 20)]  // the whole file in one buffer
+    public async Task Reader_Streams_Every_Word_Whatever_The_Buffer_Size(int bufferSize)
+    {
+        var (reader, words) = await Read(bufferSize);
+
+        Assert.Equal("3.6.2", reader.Version);
+        Assert.Equal("2026-10-26", reader.DictDate);
+        Assert.Equal(new[] { "会う", "勉強", "珈琲", "今日" }, words.Select(w => w.Kanji[0].Text));
+        Assert.Equal("v5u", words[0].Sense[0].PartOfSpeech[0]);
+    }
+
+    [Fact]
+    public async Task Reader_Rejects_A_Truncated_File()
+    {
+        byte[] cut = Encoding.UTF8.GetBytes(SampleJson[..(SampleJson.Length / 2)]);
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            new JmdictReader(64).ReadAsync(new MemoryStream(cut), _ => { }));
+    }
+
+    private static async Task<List<DictionaryEntry>> Entries() =>
+        JmdictImporter.BuildEntries((await Read(1 << 20)).Words);
+
+    [Fact]
+    public async Task Minor_Usually_Kana_Sense_Does_Not_Make_The_Word_Kana()
+    {
+        List<DictionaryEntry> entries = await Entries();
+        DictionaryEntry kanji = entries.Single(e => e.Written == "会う");
+        DictionaryEntry kana = entries.Single(e => e.Written == "あう");
+
+        Assert.False(kanji.UsuallyKana);
+        Assert.Equal(WordType.Godan, kanji.Type);
+        Assert.True(kanji.Rank < kana.Rank);
+        Assert.True(entries.Single(e => e.Written == "遇う").Rank > kanji.Rank);
+    }
+
+    [Fact]
+    public async Task Suru_Nouns_Get_A_Suru_Verb_Entry()
+    {
+        DictionaryEntry verb = (await Entries()).Single(e => e.Written == "勉強する");
+        Assert.Equal("べんきょうする", verb.Reading);
+        Assert.Equal(WordType.Suru, verb.Type);
+    }
+
+    [Fact]
+    public async Task Katakana_Readings_Are_Keyed_In_Hiragana_And_Search_Only_Spellings_Dropped()
+    {
+        List<DictionaryEntry> entries = await Entries();
+        DictionaryEntry coffee = entries.Single(e => e.Written == "コーヒー");
+
+        Assert.Equal("こーひー", coffee.Reading);
+        Assert.True(coffee.Rank < entries.Single(e => e.Written == "珈琲").Rank);
+        Assert.DoesNotContain(entries, e => e.Written == "咖啡");
+    }
+
+    [Fact]
+    public async Task Readings_Pair_Only_With_The_Spellings_They_Apply_To()
+    {
+        List<DictionaryEntry> entries = await Entries();
+        Assert.Contains(entries, e => e.Reading == "こんにち" && e.Written == "今日");
+        Assert.Contains(entries, e => e.Reading == "きょう" && e.Written == "今日");
+    }
+
+    [Fact]
+    public void Picks_The_Full_English_Zip_From_A_Release()
+    {
+        const string release = """
+            {
+              "tag_name": "3.6.2+20261026175559",
+              "assets": [
+                { "name": "jmdict-eng-common-3.6.2+20261026175559.json.zip", "browser_download_url": "https://x/common.zip", "size": 1 },
+                { "name": "jmdict-eng-3.6.2+20261026175559.json.tgz", "browser_download_url": "https://x/full.tgz", "size": 2 },
+                { "name": "jmdict-eng-3.6.2+20261026175559.json.zip", "browser_download_url": "https://x/full.zip", "size": 3 },
+                { "name": "jmdict-all-3.6.2+20261026175559.json.zip", "browser_download_url": "https://x/all.zip", "size": 4 }
+              ]
+            }
+            """;
+        using JsonDocument doc = JsonDocument.Parse(release);
+
+        DictionaryRelease? picked = JmdictFiles.PickRelease(doc.RootElement);
+
+        Assert.NotNull(picked);
+        Assert.Equal("https://x/full.zip", picked.DownloadUrl);
+        Assert.Equal("3.6.2+20261026175559", picked.Version);
+        Assert.Equal(3, picked.Size);
+    }
+
+    [Fact]
+    public void Extracts_The_Json_Under_Its_Own_Name()
+    {
+        string folder = Directory.CreateTempSubdirectory("kotoneko-test-").FullName;
+        try {
+            string zip = Path.Combine(folder, "dict.zip");
+            using (ZipArchive archive = ZipFile.Open(zip, ZipArchiveMode.Create)) {
+                using (StreamWriter w = new(archive.CreateEntry("../../evil/jmdict-eng-3.6.2.json").Open())) {
+                    w.Write("{}");
+                }
+                archive.CreateEntry("README.txt");
+            }
+
+            string extracted = JmdictFiles.ExtractJson(zip, folder);
+
+            Assert.Equal(Path.Combine(folder, "jmdict.json"), extracted);
+            Assert.Equal("{}", File.ReadAllText(extracted));
+        } finally {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Rejects_A_Zip_Without_Exactly_One_Json()
+    {
+        string folder = Directory.CreateTempSubdirectory("kotoneko-test-").FullName;
+        try {
+            string zip = Path.Combine(folder, "dict.zip");
+            using (ZipArchive archive = ZipFile.Open(zip, ZipArchiveMode.Create)) {
+                archive.CreateEntry("README.txt");
+            }
+
+            Assert.Throws<InvalidDataException>(() => JmdictFiles.ExtractJson(zip, folder));
+        } finally {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+}

@@ -1,0 +1,78 @@
+@page "/japanese-input"
+@inject DictionaryService DictionaryService
+
+<PageTitle>Japanese input · KotoNeko</PageTitle>
+
+<h1>Japanese input</h1>
+
+<div class="kn-panel">
+    <p>
+        Type romaji with the Windows IME <strong>off</strong>. It becomes kana as you type;
+        press <kbd>Space</kbd> to convert to kanji.
+    </p>
+    @if (!_hasDictionary)
+    {
+        <div class="kn-msg kn-msg-err">
+            No dictionary is imported yet, so only your vocabulary, hiragana and katakana are offered.
+            See <a href="/settings">Settings</a> for how to import one.
+        </div>
+    }
+
+    <JapaneseInput Placeholder="Type here…" AutoFocus="true" OnChanged="OnChanged" OnSubmit="OnSubmit" />
+
+    <table class="kn-table kn-ime-keys">
+        <tbody>
+            <tr><td><kbd>Space</kbd></td><td>Convert, then next candidate</td></tr>
+            <tr><td><kbd>↓</kbd> <kbd>↑</kbd> · <kbd>1</kbd>–<kbd>9</kbd></td><td>Next / previous candidate · pick one</td></tr>
+            <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Move between segments</td></tr>
+            <tr><td><kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>Make the segment shorter / longer</td></tr>
+            <tr><td><kbd>F7</kbd> · <kbd>F6</kbd></td><td>Katakana · hiragana</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Keep the conversion (or the kana); Enter again submits</td></tr>
+            <tr><td><kbd>Esc</kbd> · <kbd>Backspace</kbd></td><td>Back to kana</td></tr>
+        </tbody>
+    </table>
+    <p class="kn-hint">
+        Converting a word or short phrase at a time works best. Text is only composed at the end of the field.
+        When you pick a candidate other than the first, it comes first next time (see Settings to forget these).
+    </p>
+</div>
+
+<div class="kn-panel">
+    <h2>What the field reports</h2>
+    <p><span class="kn-hint">Text:</span> <span class="kn-jp">@_current.Text</span></p>
+    <p><span class="kn-hint">Kana typed:</span> <span class="kn-jp">@(_current.Kana ?? "(unknown — edited after converting)")</span></p>
+
+    @if (_submitted.Count > 0)
+    {
+        <h3 class="kn-subhead">Submitted with Enter</h3>
+        <ul class="kn-missed-list">
+            @foreach (JapaneseText line in _submitted)
+            {
+                <li class="kn-missed-item">
+                    <span class="kn-missed-jp kn-jp">@line.Text</span>
+                    <span class="kn-missed-reading">@line.Kana</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private JapaneseText _current = new(string.Empty, string.Empty);
+    private readonly List<JapaneseText> _submitted = new();
+    private bool _hasDictionary = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hasDictionary = await DictionaryService.GetImportAsync() is not null;
+    }
+
+    private void OnChanged(JapaneseText text) => _current = text;
+
+    private void OnSubmit()
+    {
+        if (_current.Text.Length > 0) {
+            _submitted.Insert(0, _current);
+        }
+    }
+}

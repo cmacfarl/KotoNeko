@@ -229,12 +229,15 @@ else
             return;
         }
 
+        // Keep (or, after clicking the speaker, return) focus in the answer box.
+        // Focus directly, without selecting: a queued focusSelect would run on the
+        // next render, which is the user's first keystroke, and select that letter.
         try {
+            await JS.InvokeVoidAsync("kotoneko.focus", _inputRef);
             await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/word");
         } catch {
             Console.WriteLine("Failed to play listening audio for " + vocab.Reading);
         }
-        _focusQueued = true;
     }
 
     // Called from JS (kotoneko.kanaInput) after it has converted + displayed the

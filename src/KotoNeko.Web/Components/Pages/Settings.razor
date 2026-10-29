@@ -1,5 +1,9 @@
 @page "/settings"
 @inject SettingsService SettingsService
+@inject DictionaryService DictionaryService
+@inject DictionaryImportService ImportService
+@implements IDisposable
+@using KotoNeko.Data.Dictionary
 
 <PageTitle>Settings · KotoNeko</PageTitle>
 
@@ -67,17 +71,192 @@ else
     <div class="kn-toolbar">
         <button class="kn-btn kn-btn-primary" @onclick="SaveAsync" disabled="@_saving">Save</button>
     </div>
+
+    <div class="kn-panel">
+        <h2>Japanese input and dictionary</h2>
+        <p>
+            Japanese text fields convert kana to kanji themselves, offline, so keep the Windows IME off.
+            <a href="/japanese-input">Try the Japanese input</a>.
+        </p>
+        @if (_dictionary is null)
+        {
+            <p><strong>No dictionary imported.</strong> Conversion offers only your vocabulary, hiragana and katakana until you import one.</p>
+        }
+        else
+        {
+            <p>
+                <strong>@_dictionary.EntryCount.ToString("N0") entries</strong> from @_dictionary.Source,
+                version @_dictionary.Version (@_dictionary.DictionaryDate),
+                imported @_dictionary.ImportedAt.ToLocalTime().ToString("MMM d, yyyy").
+            </p>
+        }
+        @{ DictionaryImportStatus import = ImportService.Status; }
+        @if (import.Running)
+        {
+            <div class="kn-import-progress">
+                <div><strong>Importing</strong> from @import.Source · @StageText(import)</div>
+                <div class="kn-import-bar"><div class="kn-import-bar-fill" style="width:@Percent(import)%"></div></div>
+                <p class="kn-hint">This runs on the server: you can leave this page and come back. The current dictionary keeps working until the new one is complete.</p>
+            </div>
+        }
+        else
+        {
+            @if (import.Error is not null)
+            {
+                <div class="kn-msg kn-msg-err">The import from @import.Source failed: @import.Error</div>
+            }
+            else if (import.Result is { } done)
+            {
+                <div class="kn-msg kn-msg-ok">
+                    Imported @done.Entries.ToString("N0") entries (JMdict @done.Version) in @done.Elapsed.TotalSeconds.ToString("N0") seconds.
+                </div>
+            }
+
+            <div class="kn-toolbar">
+                <button class="kn-btn kn-btn-accent" @onclick="DownloadAndImport" disabled="@_uploading">
+                    ⤓ Download and import the latest dictionary
+                </button>
+            </div>
+            <p class="kn-hint">
+                Downloads the newest full English release of jmdict-simplified from GitHub (about 12 MB) and imports it,
+                replacing the current dictionary. This download is the only thing KotoNeko fetches for the dictionary;
+                nothing you type is sent anywhere.
+            </p>
+
+            <div class="kn-form-row">
+                <label>Or import a file you already have (<code>jmdict-eng-…json.zip</code> or the unzipped <code>.json</code>)</label>
+                <InputFile OnChange="UploadAndImport" accept=".zip,.json" disabled="@_uploading" />
+                @if (_uploading)
+                {
+                    <p class="kn-hint">Uploading… @_uploadPercent%</p>
+                }
+            </div>
+        }
+        @if (_importMessage is not null)
+        {
+            <div class="kn-msg kn-msg-err">@_importMessage</div>
+        }
+        <p class="kn-hint">
+            From the command line instead: <code>KotoNeko.Web --import-jmdict "path\to\jmdict-eng-&lt;version&gt;.json"</code>.
+        </p>
+
+        <h3 class="kn-subhead">Learned choices</h3>
+        <p>
+            When you pick a candidate other than the first, KotoNeko remembers it and offers it first next time,
+            for every form of the word (picking 読んだ teaches 読む). Dictation fields don't learn and ignore what was learned,
+            so they still test your kanji choice.
+            <strong>@_choiceCount.ToString("N0")</strong> remembered.
+        </p>
+        <div class="kn-toolbar">
+            <button class="kn-btn" @onclick="ForgetChoicesAsync" disabled="@(_choiceCount == 0)">Forget learned choices</button>
+        </div>
+
+        <p class="kn-hint">
+            This uses the JMdict dictionary, the property of the Electronic Dictionary Research and Development Group,
+            used under the Creative Commons Attribution-ShareAlike 4.0 licence (www.edrdg.org/edrdg/licence.html).
+        </p>
+    </div>
 }
 
 @code {
     private StudySettings? _settings;
+    private DictionaryImport? _dictionary;
     private string? _message;
     private bool _saving;
+    private bool _uploading;
+    private int _uploadPercent;
+    private string? _importMessage;
+    private bool _wasRunning;
+    private int _choiceCount;
 
     protected override async Task OnInitializedAsync()
     {
         _settings = await SettingsService.GetAsync();
+        _dictionary = await DictionaryService.GetImportAsync();
+        _choiceCount = await DictionaryService.CountChoicesAsync();
+        _wasRunning = ImportService.Status.Running;
+        ImportService.Changed += OnImportChanged;
     }
+
+    // The import runs on a background thread; redraw on this page's dispatcher, and
+    // reload the dictionary details once a running import finishes.
+    private void OnImportChanged() => _ = InvokeAsync(async () =>
+    {
+        bool running = ImportService.Status.Running;
+        if (_wasRunning && !running) {
+            _dictionary = await DictionaryService.GetImportAsync();
+        }
+        _wasRunning = running;
+        StateHasChanged();
+    });
+
+    private async Task ForgetChoicesAsync()
+    {
+        await DictionaryService.ForgetChoicesAsync();
+        _choiceCount = 0;
+    }
+
+    private void DownloadAndImport()
+    {
+        _importMessage = ImportService.StartDownloadAndImport() ? null : "An import is already running.";
+    }
+
+    private async Task UploadAndImport(InputFileChangeEventArgs e)
+    {
+        _importMessage = null;
+        IBrowserFile file = e.File;
+        string extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (extension is not (".zip" or ".json")) {
+            _importMessage = "Choose the dictionary's .zip or .json file.";
+            return;
+        }
+
+        // Copy the upload to a temporary file first: the import itself runs in the
+        // background, after this page's connection may be gone.
+        string temp = Path.Combine(Path.GetTempPath(), $"kotoneko-upload-{Guid.NewGuid():N}{extension}");
+        _uploading = true;
+        try {
+            await using (Stream source = file.OpenReadStream(JmdictFiles.MaxFileSize))
+            await using (FileStream target = File.Create(temp)) {
+                byte[] buffer = new byte[256 * 1024];
+                long done = 0;
+                int read;
+                while ((read = await source.ReadAsync(buffer)) > 0) {
+                    await target.WriteAsync(buffer.AsMemory(0, read));
+                    done += read;
+                    int percent = file.Size > 0 ? (int)(100 * done / file.Size) : 0;
+                    if (percent != _uploadPercent) {
+                        _uploadPercent = percent;
+                        StateHasChanged();
+                    }
+                }
+            }
+
+            if (!ImportService.StartImportFromFile(temp, file.Name)) {
+                _importMessage = "An import is already running.";
+            }
+        } catch (Exception ex) {
+            File.Delete(temp);
+            _importMessage = $"The upload failed: {ex.Message}";
+        } finally {
+            _uploading = false;
+            _uploadPercent = 0;
+        }
+    }
+
+    private static int Percent(DictionaryImportStatus s) =>
+        s.Total > 0 ? (int)Math.Clamp(100 * s.Done / s.Total, 0, 100) : 0;
+
+    private static string StageText(DictionaryImportStatus s) => s.Stage switch
+    {
+        ImportStage.Downloading => $"downloading ({s.Done / (1024 * 1024)} of {Math.Max(1, s.Total / (1024 * 1024))} MB)",
+        ImportStage.Reading => $"reading the dictionary ({Percent(s)}%)",
+        ImportStage.Writing => $"writing entries ({s.Done:N0} of {s.Total:N0})",
+        ImportStage.Done => "finishing",
+        _ => "starting",
+    };
+
+    public void Dispose() => ImportService.Changed -= OnImportChanged;
 
     private async Task SaveAsync()
     {

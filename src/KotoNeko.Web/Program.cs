@@ -1,5 +1,7 @@
 using KotoNeko.Core.Domain;
+using KotoNeko.Core.Ime;
 using KotoNeko.Data;
+using KotoNeko.Data.Dictionary;
 using KotoNeko.Jisho;
 using KotoNeko.Web.Components;
 using KotoNeko.Web.Services;
@@ -29,6 +31,17 @@ builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddScoped<ReviewService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<SettingsService>();
+builder.Services.AddScoped<DictionaryService>();
+
+// Dictionary imports run in the background, outside any page; the only network
+// use is downloading the dictionary release from GitHub.
+builder.Services.AddHttpClient(DictionaryImportService.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(10);
+    client.DefaultRequestHeaders.Add("User-Agent", "KotoNeko/1.0 (personal study app)");
+});
+builder.Services.AddSingleton<DictionaryImportService>();
+builder.Services.AddScoped(sp => new KanaKanjiConverter(sp.GetRequiredService<DictionaryService>()));
 
 string ttsApiKey = builder.Configuration["GoogleTtsApiKey"] ?? string.Empty;
 builder.Services.AddSingleton<JapaneseTtsService>(_ => new JapaneseTtsService(ttsApiKey));
@@ -59,6 +72,25 @@ using (IServiceScope scope = app.Services.CreateScope())
             "Could not connect to / migrate the database. Set a valid connection string " +
             "in appsettings.json or the KOTONEKO_CONNECTION environment variable.");
     }
+}
+
+// One-off command: import the JMdict dictionary for offline kanji conversion, then exit.
+//   KotoNeko.Web --import-jmdict "path/to/jmdict-eng-x.y.z.json"
+if (app.Configuration["import-jmdict"] is { Length: > 0 } jmdictPath)
+{
+    IDbContextFactory<KotoNekoDbContext> factory = app.Services.GetRequiredService<IDbContextFactory<KotoNekoDbContext>>();
+    await using KotoNekoDbContext db = await factory.CreateDbContextAsync();
+    ImportStage? lastStage = null;
+    ImportResult result = await JmdictImporter.ImportAsync(db, jmdictPath, new SyncProgress<ImportProgress>(p =>
+    {
+        if (p.Stage != lastStage) {
+            lastStage = p.Stage;
+            Console.WriteLine($"{p.Stage} …");
+        }
+    }));
+    Console.WriteLine($"Imported {result.Entries:N0} entries (JMdict {result.Version}, {result.DictionaryDate}) " +
+        $"in {result.Elapsed.TotalSeconds:N0}s, peak memory {result.PeakMemoryMb:N0} MB.");
+    return;
 }
 
 if (!app.Environment.IsDevelopment())
@@ -101,4 +133,39 @@ app.MapGet("/api/conjugation/{id:int}/audio", async (int id, IDbContextFactory<K
         : Results.NotFound();
 });
 
+// Offline kana → kanji conversion for the JapaneseInput component. Fields that
+// test kanji choice (dictation) send learn: false, so past choices neither
+// reorder their candidates nor get recorded from them.
+app.MapPost("/api/ime/convert", async (ImeRequest request, KanaKanjiConverter converter) =>
+    Results.Ok(await converter.ConvertAsync(request.Kana ?? string.Empty, request.Learn ?? true)));
+
+app.MapPost("/api/ime/candidates", async (ImeRequest request, KanaKanjiConverter converter) =>
+    Results.Ok(await converter.CandidatesAsync(request.Kana ?? string.Empty, request.Learn ?? true)));
+
+app.MapPost("/api/ime/learn", async (ImeChoicesRequest request, KanaKanjiConverter converter, DictionaryService dictionary) =>
+{
+    List<(string, string)> choices = new();
+    foreach (ImeChoiceDto c in request.Choices ?? new List<ImeChoiceDto>()) {
+        if (!string.IsNullOrEmpty(c.Reading) && !string.IsNullOrEmpty(c.Written)) {
+            choices.Add(await converter.ResolveChoiceAsync(c.Reading, c.Written));
+        }
+    }
+    await dictionary.SaveChoicesAsync(choices);
+    return Results.NoContent();
+});
+
 app.Run();
+
+/// <summary>Body of an IME conversion request.</summary>
+internal sealed record ImeRequest(string? Kana, bool? Learn);
+
+/// <summary>Spellings picked in one commit, one per converted segment.</summary>
+internal sealed record ImeChoicesRequest(List<ImeChoiceDto>? Choices);
+
+internal sealed record ImeChoiceDto(string? Reading, string? Written);
+
+/// <summary>Reports progress on the calling thread, so console lines stay in order.</summary>
+internal sealed class SyncProgress<T>(Action<T> report) : IProgress<T>
+{
+    public void Report(T value) => report(value);
+}

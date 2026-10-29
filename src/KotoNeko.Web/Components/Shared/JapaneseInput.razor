@@ -1,0 +1,90 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* A text field with KotoNeko's own kana → kanji conversion, so the Windows IME
+   can stay off. Typing and conversion happen in the browser (kotoneko.japaneseInput);
+   this component only hears the committed text and Enter. *@
+
+<div class="kn-ja">
+    <input @ref="_input"
+           class="kn-input kn-ja-input"
+           type="text"
+           lang="ja"
+           placeholder="@Placeholder"
+           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+    <div @ref="_strip" class="kn-ime-strip"></div>
+</div>
+
+@code {
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>The committed text changed. Kana is what was typed for it, when known.</summary>
+    [Parameter] public EventCallback<JapaneseText> OnChanged { get; set; }
+
+    /// <summary>Enter was pressed with nothing left to convert.</summary>
+    [Parameter] public EventCallback OnSubmit { get; set; }
+
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>
+    /// Remember the spellings picked here and put past picks first. Turn off where
+    /// the kanji choice itself is being tested, such as dictation.
+    /// </summary>
+    [Parameter] public bool Learn { get; set; } = true;
+
+    private ElementReference _input;
+    private ElementReference _strip;
+    private DotNetObjectReference<JapaneseInput>? _dotNetRef;
+    private bool _attached;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) {
+            return;
+        }
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("kotoneko.japaneseInput.attach", _input, _strip, _dotNetRef, new { learn = Learn });
+        _attached = true;
+        if (AutoFocus) {
+            await FocusAsync();
+        }
+    }
+
+    [JSInvokable]
+    public Task OnImeChanged(string text, string? kana) => OnChanged.InvokeAsync(new JapaneseText(text, kana));
+
+    [JSInvokable]
+    public Task OnImeSubmit() => OnSubmit.InvokeAsync();
+
+    /// <summary>Empty the field.</summary>
+    public async Task ClearAsync()
+    {
+        if (_attached) {
+            await JS.InvokeVoidAsync("kotoneko.japaneseInput.clear", _input);
+        }
+    }
+
+    public async Task FocusAsync()
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.focus", _input);
+        } catch (JSException) {
+            // ignore focus failures
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_attached) {
+            try {
+                await JS.InvokeVoidAsync("kotoneko.japaneseInput.detach", _input);
+            } catch (JSException) {
+                // circuit may already be gone
+            } catch (JSDisconnectedException) {
+                // circuit is gone
+            }
+        }
+        _dotNetRef?.Dispose();
+    }
+}
