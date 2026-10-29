@@ -2,7 +2,7 @@ using KotoNeko.Core.Conjugation;
 using KotoNeko.Core.Domain;
 using KotoNeko.Core.Text;
 
-namespace KotoNeko.Web.Services;
+namespace KotoNeko.Core.Review;
 
 /// <summary>Whether a session is teaching new items or reviewing due ones.</summary>
 public enum SessionKind
@@ -48,12 +48,12 @@ public class ReviewQuestion
 }
 
 /// <summary>
-/// One vocabulary item being reviewed, with its set of questions and the live SRS
+/// One study item being reviewed, with its set of questions and the live SRS
 /// entity that will be mutated when the card is finalised.
 /// </summary>
 public class ReviewCard
 {
-    public required Vocabulary Vocabulary { get; init; }
+    public required StudyItem Item { get; init; }
 
     /// <summary>The tracked SRS entity for this item (mutated on finalise).</summary>
     public required SrsItem Srs { get; init; }

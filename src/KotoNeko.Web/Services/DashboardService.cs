@@ -41,12 +41,12 @@ public class DashboardService
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
 
-        int total = await db.Vocabulary.CountAsync();
-        int asleep = await db.Vocabulary.CountAsync(v => v.IsAsleep);
-        int lessons = await db.Vocabulary.CountAsync(v => !v.IsAsleep && v.Srs == null);
+        int total = await db.StudyItems.CountAsync();
+        int asleep = await db.StudyItems.CountAsync(i => i.IsAsleep);
+        int lessons = await db.StudyItems.CountAsync(i => !i.IsAsleep && i.Srs == null);
 
         int due = await db.SrsItems.CountAsync(s =>
-            !s.Vocabulary!.IsAsleep
+            !s.StudyItem!.IsAsleep
             && s.Stage != SrsStage.Locked
             && s.Stage != SrsStage.Burned
             && s.NextReviewAt != null
@@ -54,7 +54,7 @@ public class DashboardService
 
         // Counts by SRS stage -> rolled into bands.
         List<StageCount> stageCounts = await db.SrsItems
-            .Where(s => !s.Vocabulary!.IsAsleep)
+            .Where(s => !s.StudyItem!.IsAsleep)
             .GroupBy(s => s.Stage)
             .Select(g => new StageCount(g.Key, g.Count()))
             .ToListAsync();
@@ -76,15 +76,16 @@ public class DashboardService
             }
         }
 
-        // Recently missed (distinct latest wrong answers).
+        // Recently missed (distinct latest wrong answers). Vocabulary is the only
+        // kind with a display shape so far.
         List<MissedItem> missed = await db.ReviewLogs
-            .Where(r => !r.WasCorrect)
+            .Where(r => !r.WasCorrect && r.StudyItem is Vocabulary)
             .OrderByDescending(r => r.ReviewedAt)
             .Select(r => new MissedItem(
-                r.VocabularyId,
-                r.Vocabulary!.Japanese,
-                r.Vocabulary.Reading,
-                r.Vocabulary.Meanings
+                r.StudyItemId,
+                ((Vocabulary)r.StudyItem!).Japanese,
+                ((Vocabulary)r.StudyItem!).Reading,
+                ((Vocabulary)r.StudyItem!).Meanings
                     .OrderBy(m => m.SortOrder)
                     .Select(m => m.Text)
                     .FirstOrDefault() ?? string.Empty,
@@ -96,7 +97,7 @@ public class DashboardService
         // Upcoming sessions: items that become due group into a session by their
         // shared availability time. Take the next few sessions, soonest first.
         List<DateTime> upcoming = await db.SrsItems
-            .Where(s => !s.Vocabulary!.IsAsleep
+            .Where(s => !s.StudyItem!.IsAsleep
                 && s.NextReviewAt != null
                 && s.NextReviewAt > now)
             .Select(s => s.NextReviewAt!.Value)

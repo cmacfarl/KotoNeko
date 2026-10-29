@@ -11,6 +11,7 @@ public class KotoNekoDbContext : DbContext
     }
 
     public DbSet<SourceMaterial> SourceMaterials => Set<SourceMaterial>();
+    public DbSet<StudyItem> StudyItems => Set<StudyItem>();
     public DbSet<Vocabulary> Vocabulary => Set<Vocabulary>();
     public DbSet<VocabularyMeaning> VocabularyMeanings => Set<VocabularyMeaning>();
     public DbSet<Conjugation> Conjugations => Set<Conjugation>();
@@ -31,9 +32,31 @@ public class KotoNekoDbContext : DbContext
             entity.HasIndex(e => e.Name).IsUnique();
         });
 
+        // Table-per-type: StudyItems holds what every kind shares, and each derived
+        // table (Vocabulary, ...) holds its own columns keyed by the same id.
+        modelBuilder.Entity<StudyItem>(entity =>
+        {
+            entity.UseTptMappingStrategy();
+            entity.ToTable("StudyItems");
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.Srs)
+                .WithOne(s => s.StudyItem)
+                .HasForeignKey<SrsItem>(s => s.StudyItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(e => e.ReviewLogs)
+                .WithOne(r => r.StudyItem)
+                .HasForeignKey(r => r.StudyItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.Kind);
+            entity.HasIndex(e => e.IsAsleep);
+        });
+
         modelBuilder.Entity<Vocabulary>(entity =>
         {
-            entity.HasKey(e => e.Id);
+            entity.ToTable("Vocabulary");
             entity.Property(e => e.Japanese).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Reading).HasMaxLength(100).IsRequired();
             entity.Property(e => e.AlternateReadings).HasMaxLength(500).HasDefaultValue(string.Empty);
@@ -58,22 +81,10 @@ public class KotoNekoDbContext : DbContext
                 .HasForeignKey(e => e.SourceMaterialId)
                 .OnDelete(DeleteBehavior.SetNull);
 
-            entity.HasOne(e => e.Srs)
-                .WithOne(s => s.Vocabulary)
-                .HasForeignKey<SrsItem>(s => s.VocabularyId)
-                .OnDelete(DeleteBehavior.Cascade);
-
             entity.HasMany(e => e.Conjugations)
                 .WithOne(c => c.Vocabulary)
                 .HasForeignKey(c => c.VocabularyId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasMany(e => e.ReviewLogs)
-                .WithOne(r => r.Vocabulary)
-                .HasForeignKey(r => r.VocabularyId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasIndex(e => e.IsAsleep);
         });
 
         modelBuilder.Entity<VocabularyMeaning>(entity =>
@@ -94,7 +105,7 @@ public class KotoNekoDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Ignore(e => e.IsUnlocked);
-            entity.HasIndex(e => e.VocabularyId).IsUnique();
+            entity.HasIndex(e => e.StudyItemId).IsUnique();
             entity.HasIndex(e => e.NextReviewAt);
             entity.HasIndex(e => e.Stage);
         });

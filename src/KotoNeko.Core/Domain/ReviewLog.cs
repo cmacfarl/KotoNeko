@@ -9,8 +9,8 @@ public class ReviewLog
 {
     public long Id { get; set; }
 
-    public int VocabularyId { get; set; }
-    public Vocabulary? Vocabulary { get; set; }
+    public int StudyItemId { get; set; }
+    public StudyItem? StudyItem { get; set; }
 
     public DateTime ReviewedAt { get; set; }
 

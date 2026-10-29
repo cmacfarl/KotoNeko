@@ -1,5 +1,6 @@
 using KotoNeko.Core.Conjugation;
 using KotoNeko.Core.Domain;
+using KotoNeko.Core.Review;
 using KotoNeko.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,7 +23,7 @@ public class ReviewService
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
         return await db.SrsItems
-            .Where(s => !s.Vocabulary!.IsAsleep
+            .Where(s => !s.StudyItem!.IsAsleep
                 && s.Stage != SrsStage.Locked
                 && s.Stage != SrsStage.Burned
                 && s.NextReviewAt != null
@@ -34,8 +35,8 @@ public class ReviewService
     public async Task<int> CountAvailableLessonsAsync()
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
-        return await db.Vocabulary
-            .Where(v => !v.IsAsleep && v.Srs == null)
+        return await db.StudyItems
+            .Where(i => !i.IsAsleep && i.Srs == null)
             .CountAsync();
     }
 
@@ -91,7 +92,7 @@ public class ReviewService
         }
 
         List<ReviewCard> cards = items.Select(v => {
-            SrsItem srs = v.Srs ?? new SrsItem { VocabularyId = v.Id, Stage = SrsStage.Locked };
+            SrsItem srs = v.Srs ?? new SrsItem { StudyItemId = v.Id, Stage = SrsStage.Locked };
             return BuildCard(v, srs);
         }).ToList();
 
@@ -107,12 +108,10 @@ public class ReviewService
 
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
 
+        // Set state on the SRS row alone: Add/Update would walk the attached graph
+        // and write back the item, its meanings and conjugations as well.
         foreach (SrsItem srs in results.SrsItems) {
-            if (srs.Id == 0) {
-                db.SrsItems.Add(srs);
-            } else {
-                db.SrsItems.Update(srs);
-            }
+            db.Entry(srs).State = srs.Id == 0 ? EntityState.Added : EntityState.Modified;
         }
 
         foreach (ReviewLog log in results.Logs) {
@@ -171,7 +170,7 @@ public class ReviewService
         }
 
         return new ReviewCard() {
-            Vocabulary = v,
+            Item = v,
             Srs = srs,
             Questions = questions,
         };

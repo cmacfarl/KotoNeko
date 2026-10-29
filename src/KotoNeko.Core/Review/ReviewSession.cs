@@ -2,7 +2,7 @@ using KotoNeko.Core.Domain;
 using KotoNeko.Core.Srs;
 using KotoNeko.Core.Text;
 
-namespace KotoNeko.Web.Services;
+namespace KotoNeko.Core.Review;
 
 /// <summary>The outcome of submitting an answer.</summary>
 public class SubmitOutcome
@@ -19,21 +19,25 @@ public class SubmitOutcome
 /// <summary>
 /// A stateful, in-memory review/lesson session presenting one question at a time.
 /// All SRS mutations happen on the in-memory tracked entities; nothing is written
-/// to the database until <see cref="BuildPendingResults"/> is persisted by the
-/// caller. This makes the native "undo" feature exact: every submission snapshots
-/// the full session state, and <see cref="Undo"/> simply restores the snapshot,
-/// rolling back stage changes, miss counts, and pending logs together.
+/// to the database until <see cref="CommitPendingResults"/> hands it to the caller.
+/// This makes the native "undo" feature exact: each submission snapshots the full
+/// session state, and <see cref="Undo"/> simply restores the snapshot, rolling back
+/// stage changes, miss counts, and pending logs together.
+/// <para>
+/// Undo covers only the most recent answer, and committing discards the snapshot,
+/// so nothing an undo could roll back has ever been handed out for persistence.
+/// </para>
 /// </summary>
 public class ReviewSession
 {
     private readonly List<ReviewCard> _cards;
     private readonly List<QRef> _queue = new();
     private readonly List<ReviewLog> _pendingLogs = new();
-    private readonly Stack<Memento> _undo = new();
+    private Memento? _undo;
     private readonly DateTime _now;
     private readonly Random _random;
-    private readonly HashSet<int> _persistedCardIndices = new();
-    private int _persistedLogCount = 0;
+    private readonly HashSet<int> _committedCardIndices = new();
+    private int _committedLogCount = 0;
 
     public ReviewSession(IReadOnlyList<ReviewCard> cards, SessionKind kind, DateTime now, int randomSeed)
     {
@@ -70,7 +74,7 @@ public class ReviewSession
 
     public bool IsComplete => _queue.Count == 0;
 
-    public bool CanUndo => _undo.Count > 0;
+    public bool CanUndo => _undo is not null;
 
     /// <summary>The card the current question belongs to.</summary>
     public ReviewCard? CurrentCard => _queue.Count > 0 ? _cards[_queue[0].Card] : null;
@@ -99,8 +103,9 @@ public class ReviewSession
             return new SubmitOutcome { Judgment = judgment, CorrectAnswer = question.ExpectedPrimary };
         }
 
-        // Snapshot before mutating so undo can restore exactly.
-        PushSnapshot();
+        // Snapshot before mutating so undo can restore exactly. Only the latest
+        // answer is undoable, so this replaces any earlier snapshot.
+        _undo = Memento.Capture(this);
 
         bool finalised = false;
         if (judgment == AnswerJudgment.Correct) {
@@ -130,47 +135,34 @@ public class ReviewSession
     /// <summary>Undo the most recent submission, restoring full session state.</summary>
     public void Undo()
     {
-        if (_undo.Count == 0)
+        if (_undo is null)
         {
             return;
         }
 
-        Memento m = _undo.Pop();
-        m.Restore(this);
+        _undo.Restore(this);
+        _undo = null;
     }
 
     /// <summary>
-    /// Returns only the data for cards finalised since the last call to this method.
-    /// Call after each <see cref="SubmitOutcome.CardFinalised"/> to persist incrementally.
+    /// Make everything answered so far permanent and return the database changes
+    /// not yet handed out: cards finalised since the last commit and their logs.
+    /// Discards the undo snapshot, so committed results can never be rolled back.
+    /// Call when the user moves past an answer, and at session end or abandonment.
     /// </summary>
-    public PendingResults BuildIncrementalResults()
+    public PendingResults CommitPendingResults()
     {
-        List<SrsItem> newItems = new();
-        for (int i = 0; i < _cards.Count; i++)
-        {
-            if (_cards[i].Finalised && _persistedCardIndices.Add(i))
-                newItems.Add(_cards[i].Srs);
-        }
-        List<ReviewLog> newLogs = _pendingLogs.Skip(_persistedLogCount).ToList();
-        _persistedLogCount = _pendingLogs.Count;
-        return new PendingResults(newItems, newLogs);
-    }
+        _undo = null;
 
-    /// <summary>
-    /// Build any remaining database changes not yet written by incremental persists.
-    /// Safe to call at session end or on abandonment.
-    /// </summary>
-    public PendingResults BuildPendingResults()
-    {
-        List<SrsItem> remaining = new();
+        List<SrsItem> items = new();
         for (int i = 0; i < _cards.Count; i++)
         {
-            if (_cards[i].Finalised && _persistedCardIndices.Add(i))
-                remaining.Add(_cards[i].Srs);
+            if (_cards[i].Finalised && _committedCardIndices.Add(i))
+                items.Add(_cards[i].Srs);
         }
-        List<ReviewLog> remainingLogs = _pendingLogs.Skip(_persistedLogCount).ToList();
-        _persistedLogCount = _pendingLogs.Count;
-        return new PendingResults(remaining, remainingLogs);
+        List<ReviewLog> logs = _pendingLogs.Skip(_committedLogCount).ToList();
+        _committedLogCount = _pendingLogs.Count;
+        return new PendingResults(items, logs);
     }
 
     private void FinaliseCard(ReviewCard card)
@@ -198,7 +190,7 @@ public class ReviewSession
         // One log row per question, capturing whether it was ultimately missed.
         foreach (ReviewQuestion q in card.Questions) {
             _pendingLogs.Add(new ReviewLog {
-                VocabularyId = card.Vocabulary.Id,
+                StudyItemId = card.Item.Id,
                 ReviewedAt = _now,
                 QuestionType = q.Type,
                 ConjugationForm = q.Form,
@@ -221,11 +213,6 @@ public class ReviewSession
             int j = _random.Next(i + 1);
             (list[i], list[j]) = (list[j], list[i]);
         }
-    }
-
-    private void PushSnapshot()
-    {
-        _undo.Push(Memento.Capture(this));
     }
 
     private readonly record struct QRef(int Card, int Question);

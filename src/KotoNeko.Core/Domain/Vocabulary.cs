@@ -1,11 +1,14 @@
 namespace KotoNeko.Core.Domain;
 
 /// <summary>
-/// A single vocabulary item. The unit a user learns and is quizzed on.
+/// A single vocabulary item: a word the user learns and is quizzed on.
 /// </summary>
-public class Vocabulary
+public class Vocabulary : StudyItem
 {
-    public int Id { get; set; }
+    public Vocabulary()
+        : base(StudyItemKind.Vocabulary)
+    {
+    }
 
     /// <summary>The Japanese writing of the word (may contain kanji), e.g. 新聞.</summary>
     public string Japanese { get; set; } = string.Empty;
@@ -70,23 +73,11 @@ public class Vocabulary
         || (c >= '㐀' && c <= '䶿')  // CJK Unified Ideographs Extension A
         || c == '々';                    // 々 kanji iteration mark
 
-    /// <summary>
-    /// When true the item is "asleep": excluded from lessons and reviews entirely.
-    /// </summary>
-    public bool IsAsleep { get; set; }
-
     public int? SourceMaterialId { get; set; }
     public SourceMaterial? SourceMaterial { get; set; }
 
-    public DateTime CreatedAt { get; set; }
-
-    /// <summary>The SRS scheduling state for this item. One-to-one.</summary>
-    public SrsItem? Srs { get; set; }
-
     /// <summary>The 14 stored conjugations (only populated for verbs).</summary>
     public List<Conjugation> Conjugations { get; set; } = new();
-
-    public List<ReviewLog> ReviewLogs { get; set; } = new();
 
     public bool HasWordAudio { get; set; }
     public bool HasSentenceAudio { get; set; }
