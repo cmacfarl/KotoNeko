@@ -116,10 +116,30 @@ else
                         }
                     }
                 </p>
-                <p class="kn-hint">
-                    <span class="kn-diff-missing">missed</span> · <span class="kn-diff-wrong">heard differently</span>
-                    (what you typed above it) · <span class="kn-diff-extra">not in the sentence</span>
-                </p>
+                @* A key to the marks, listing only those the comparison uses. *@
+                @{ HashSet<DiffKind> marks = check.Sound.Parts.Select(p => p.Kind).Where(k => k != DiffKind.Same).ToHashSet(); }
+                @if (marks.Count > 0)
+                {
+                    <p class="kn-hint">
+                        @{ bool first = true; }
+                        @if (marks.Contains(DiffKind.Missing))
+                        {
+                            <span class="kn-diff-missing">missed</span>
+                            first = false;
+                        }
+                        @if (marks.Contains(DiffKind.Wrong))
+                        {
+                            @if (!first) { <span> · </span> }
+                            <span><span class="kn-diff-wrong">heard differently</span> (what you typed above it)</span>
+                            first = false;
+                        }
+                        @if (marks.Contains(DiffKind.Extra))
+                        {
+                            @if (!first) { <span> · </span> }
+                            <span class="kn-diff-extra">not in the sentence</span>
+                        }
+                    </p>
+                }
 
                 @foreach (string note in check.Sound.ParticleNotes)
                 {

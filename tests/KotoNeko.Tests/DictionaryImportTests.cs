@@ -11,7 +11,7 @@ namespace KotoNeko.Tests;
 public class DictionaryImportTests
 {
     // A small file in the jmdict-simplified shape, with header values to skip.
-    private const string SampleJson = """
+    internal const string SampleJson = """
         {
           "version": "3.6.2",
           "languages": ["eng"],
@@ -33,13 +33,13 @@ public class DictionaryImportTests
               "id": "2",
               "kanji": [ { "common": true, "text": "勉強", "tags": [] } ],
               "kana": [ { "common": true, "text": "べんきょう", "tags": [], "appliesToKanji": ["*"] } ],
-              "sense": [ { "partOfSpeech": ["n", "vs", "vt"], "misc": [] } ]
+              "sense": [ { "partOfSpeech": ["n", "vs", "vt"], "misc": [], "gloss": [ { "lang": "eng", "text": "study" } ] } ]
             },
             {
               "id": "3",
               "kanji": [ { "common": true, "text": "珈琲", "tags": ["ateji"] }, { "common": false, "text": "咖啡", "tags": ["sK"] } ],
               "kana": [ { "common": true, "text": "コーヒー", "tags": [], "appliesToKanji": ["*"] } ],
-              "sense": [ { "partOfSpeech": ["n"], "misc": ["uk"] } ]
+              "sense": [ { "partOfSpeech": ["n"], "misc": ["uk"], "gloss": [ { "lang": "eng", "text": "coffee" } ] } ]
             },
             {
               "id": "4",
@@ -48,13 +48,16 @@ public class DictionaryImportTests
                 { "common": true, "text": "きょう", "tags": [], "appliesToKanji": ["*"] },
                 { "common": false, "text": "こんにち", "tags": [], "appliesToKanji": ["今日"] }
               ],
-              "sense": [ { "partOfSpeech": ["n", "adv"], "misc": [] } ]
+              "sense": [
+                { "partOfSpeech": ["n", "adv"], "misc": [], "gloss": [ { "lang": "eng", "text": "today" }, { "lang": "eng", "text": "this day" } ] },
+                { "partOfSpeech": ["n"], "misc": [], "appliesToKana": ["こんにち"], "gloss": [ { "lang": "eng", "text": "these days" }, { "lang": "ger", "text": "heutzutage" } ] }
+              ]
             }
           ]
         }
         """;
 
-    private static async Task<(JmdictReader Reader, List<JmdictWord> Words)> Read(int bufferSize)
+    internal static async Task<(JmdictReader Reader, List<JmdictWord> Words)> Read(int bufferSize)
     {
         JmdictReader reader = new(bufferSize);
         List<JmdictWord> words = new();
@@ -125,6 +128,94 @@ public class DictionaryImportTests
         List<DictionaryEntry> entries = await Entries();
         Assert.Contains(entries, e => e.Reading == "こんにち" && e.Written == "今日");
         Assert.Contains(entries, e => e.Reading == "きょう" && e.Written == "今日");
+    }
+
+    internal static async Task<(List<DictionaryEntry> Entries, Dictionary<int, DictionaryMeaning> Meanings)> Dictionary()
+    {
+        List<JmdictWord> words = (await Read(1 << 20)).Words;
+        return (JmdictImporter.BuildEntries(words), JmdictImporter.BuildMeanings(words).ToDictionary(m => m.Id));
+    }
+
+    private static async Task<DictionaryWordMatch> Find(string written)
+    {
+        var (entries, meanings) = await Dictionary();
+        return Assert.Single(DictionaryWords.Match(written, entries, meanings));
+    }
+
+    [Fact]
+    public async Task Words_Are_Keyed_By_Their_JMdict_Entry_Number()
+    {
+        var (entries, meanings) = await Dictionary();
+
+        Assert.Equal(1, entries.Single(e => e.Written == "会う").WordId);
+        Assert.Equal(2, entries.Single(e => e.Written == "勉強する").WordId);
+        Assert.Equal(new[] { 1, 2, 3, 4 }, meanings.Keys.Order());
+        // Order still follows the file, for tie-breaks.
+        Assert.True(entries.Single(e => e.Written == "会う").Order < entries.Single(e => e.Written == "勉強").Order);
+    }
+
+    [Fact]
+    public async Task A_Word_Without_A_Numeric_Id_Is_Rejected()
+    {
+        List<JmdictWord> words = (await Read(1 << 20)).Words;
+        words[0].Id = "";
+        Assert.Throws<InvalidDataException>(() => JmdictImporter.BuildEntries(words));
+    }
+
+    [Fact]
+    public async Task Every_Entry_Points_At_Its_Words_Meanings()
+    {
+        var (entries, meanings) = await Dictionary();
+
+        Assert.All(entries, e => Assert.True(meanings.ContainsKey(e.WordId)));
+        Assert.Equal(entries.Single(e => e.Written == "会う").WordId, entries.Single(e => e.Written == "あう").WordId);
+        Assert.NotEqual(entries.Single(e => e.Written == "会う").WordId, entries.Single(e => e.Written == "勉強").WordId);
+    }
+
+    [Fact]
+    public async Task A_Verb_Comes_With_Its_Reading_Class_And_Main_Meaning()
+    {
+        DictionaryWordMatch word = await Find("会う");
+
+        Assert.Equal("あう", word.Reading);
+        Assert.Equal(VerbClass.Godan, word.VerbClass);
+        Assert.Equal(new[] { "to meet" }, word.MainMeanings);
+        Assert.Equal(2, word.Senses.Count);
+    }
+
+    [Fact]
+    public async Task Senses_Limited_To_Another_Reading_Are_Left_Out()
+    {
+        DictionaryWordMatch word = await Find("今日");
+
+        Assert.Equal("きょう", word.Reading);
+        Assert.Equal(new[] { "こんにち" }, word.OtherReadings);
+        Assert.Equal(new[] { "today", "this day" }, Assert.Single(word.Senses).Glosses);
+    }
+
+    [Fact]
+    public async Task A_Suru_Verb_Takes_The_Nouns_Meanings()
+    {
+        DictionaryWordMatch word = await Find("勉強する");
+
+        Assert.Equal("べんきょうする", word.Reading);
+        Assert.Equal(VerbClass.Suru, word.VerbClass);
+        Assert.Equal(new[] { "study" }, word.MainMeanings);
+    }
+
+    [Fact]
+    public async Task Kana_Words_Keep_Their_Own_Script_As_The_Reading()
+    {
+        DictionaryWordMatch word = await Find("コーヒー");
+        Assert.Equal("コーヒー", word.Reading);
+        Assert.Equal(new[] { "coffee" }, word.MainMeanings);
+    }
+
+    [Fact]
+    public async Task Only_English_Glosses_Are_Kept()
+    {
+        var (_, meanings) = await Dictionary();
+        Assert.DoesNotContain(meanings.Values, m => m.Senses.Contains("heutzutage"));
     }
 
     [Fact]

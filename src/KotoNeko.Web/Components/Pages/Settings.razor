@@ -6,6 +6,7 @@
 @implements IDisposable
 @using KotoNeko.Data.Dictionary
 @using KotoNeko.Data.Backup
+@using KotoNeko.Core.Srs
 
 <PageTitle>Settings · KotoNeko</PageTitle>
 
@@ -74,6 +75,24 @@ else
         </div>
     </div>
 
+    <div class="kn-panel">
+        <h2>Known words</h2>
+        <div class="kn-form-row">
+            <label>A word you're studying counts as known from</label>
+            <select class="kn-select" style="max-width:200px" @bind="_settings.KnownWordStage">
+                @foreach (SrsStage stage in StudySettings.KnownWordStages)
+                {
+                    <option value="@stage">@SrsSchedule.DisplayName(stage)</option>
+                }
+            </select>
+            <p class="kn-hint">
+                Known words are the ones practice sentences may use and that show no furigana: words you've marked as known
+                (asleep, not studied) plus words you're studying once they reach this stage. Words marked "do not use" never count.
+                Manage them on the <a href="/known-words">Known words</a> page.
+            </p>
+        </div>
+    </div>
+
     <div class="kn-toolbar">
         <button class="kn-btn kn-btn-primary" @onclick="SaveAsync" disabled="@_saving">Save</button>
     </div>
@@ -95,6 +114,15 @@ else
                 version @_dictionary.Version (@_dictionary.DictionaryDate),
                 imported @_dictionary.ImportedAt.ToLocalTime().ToString("MMM d, yyyy").
             </p>
+            @if (_dictionary.FormatVersion < DictionaryImport.CurrentFormatVersion)
+            {
+                <div class="kn-msg kn-msg-err">
+                    This import is from an older version of KotoNeko. It lacks
+                    @(_dictionary.FormatVersion < DictionaryImport.MeaningsFormatVersion ? "word meanings and " : "")JMdict entry numbers,
+                    which filling in words from the dictionary and adding the JLPT word lists need.
+                    Import it again (the button below); everything else keeps working meanwhile.
+                </div>
+            }
         }
         @{ DictionaryImportStatus import = ImportService.Status; }
         @if (import.Running)

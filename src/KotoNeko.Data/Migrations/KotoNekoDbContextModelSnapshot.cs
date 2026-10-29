@@ -146,6 +146,9 @@ namespace KotoNeko.Data.Migrations
                     b.Property<bool>("UsuallyKana")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<int>("WordId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Written")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -177,6 +180,11 @@ namespace KotoNeko.Data.Migrations
                     b.Property<int>("EntryCount")
                         .HasColumnType("int");
 
+                    b.Property<int>("FormatVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<DateTime>("ImportedAt")
                         .HasColumnType("datetime(6)");
 
@@ -193,6 +201,20 @@ namespace KotoNeko.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("DictionaryImports");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.DictionaryMeaning", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Senses")
+                        .IsRequired()
+                        .HasColumnType("mediumtext");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DictionaryMeanings");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.ImeChoice", b =>
@@ -425,6 +447,9 @@ namespace KotoNeko.Data.Migrations
                     b.Property<int>("DailyMinutesTarget")
                         .HasColumnType("int");
 
+                    b.Property<int>("KnownWordStage")
+                        .HasColumnType("int");
+
                     b.Property<int>("LessonBatchSize")
                         .HasColumnType("int");
 
@@ -448,6 +473,7 @@ namespace KotoNeko.Data.Migrations
                             DailyDictationCap = 10,
                             DailyLessonCap = 15,
                             DailyMinutesTarget = 60,
+                            KnownWordStage = 5,
                             LessonBatchSize = 5,
                             ListeningCountsTowardSrs = false,
                             ListeningEnabled = true,
@@ -525,6 +551,9 @@ namespace KotoNeko.Data.Migrations
                     b.Property<bool>("DisplayFurigana")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("DoNotUse")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("HasSentenceAudio")
                         .HasColumnType("tinyint(1)");
 
@@ -535,6 +564,9 @@ namespace KotoNeko.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<int?>("JlptLevel")
+                        .HasColumnType("int");
 
                     b.Property<string>("Memo")
                         .HasMaxLength(1000)
@@ -553,6 +585,8 @@ namespace KotoNeko.Data.Migrations
 
                     b.Property<int>("VerbClass")
                         .HasColumnType("int");
+
+                    b.HasIndex("JlptLevel");
 
                     b.HasIndex("SourceMaterialId");
 

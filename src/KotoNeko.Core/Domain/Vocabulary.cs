@@ -73,6 +73,17 @@ public class Vocabulary : StudyItem
         || (c >= '㐀' && c <= '䶿')  // CJK Unified Ideographs Extension A
         || c == '々';                    // 々 kanji iteration mark
 
+    /// <summary>
+    /// When true the word is kept out of practice sentences and sentence generation,
+    /// and never counts as known (for the sentence check or furigana). Independent
+    /// of <see cref="StudyItem.IsAsleep"/>: a word can be asleep and known, or
+    /// studied and not yet usable.
+    /// </summary>
+    public bool DoNotUse { get; set; }
+
+    /// <summary>The JLPT level whose word list includes this word; null when on none.</summary>
+    public JlptLevel? JlptLevel { get; set; }
+
     public int? SourceMaterialId { get; set; }
     public SourceMaterial? SourceMaterial { get; set; }
 

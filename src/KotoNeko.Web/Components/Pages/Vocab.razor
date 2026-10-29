@@ -13,6 +13,21 @@
     <label style="display:flex;align-items:center;gap:0.35rem;color:#666;font-size:0.9rem">
         <input type="checkbox" @bind="_includeAsleep" @bind:after="LoadAsync" /> show asleep
     </label>
+    <select class="kn-select" style="max-width:180px" @bind="_level" @bind:after="LoadAsync" title="JLPT level">
+        <option value="">Any JLPT level</option>
+        <option value="N5">N5</option>
+        <option value="N4">N4</option>
+        <option value="N3">N3</option>
+        <option value="none">No level</option>
+    </select>
+    @if (_level.Length == 0)
+    {
+        <label style="display:flex;align-items:center;gap:0.35rem;color:#666;font-size:0.9rem"
+               title="Seeded JLPT list words that are asleep and not studied. Manage them on the Known words page.">
+            <input type="checkbox" @bind="_includeListWords" @bind:after="LoadAsync" /> show unstudied JLPT list words
+        </label>
+    }
+    <a class="kn-btn" href="/known-words">Known words…</a>
 </div>
 
 @if (_items.Count == 0)
@@ -48,6 +63,14 @@ else
                         {
                             <span class="kn-pill kn-pill-asleep">asleep</span>
                         }
+                        @if (v.JlptLevel is { } level)
+                        {
+                            <span class="kn-pill kn-pill-jlpt">@level</span>
+                        }
+                        @if (v.DoNotUse)
+                        {
+                            <span class="kn-pill kn-pill-donotuse" title="Not used in practice sentences; doesn't count as known">do not use</span>
+                        }
                     </td>
                     <td style="white-space:nowrap">@v.Reading</td>
                     <td>@v.MeaningsDisplay</td>
@@ -79,6 +102,8 @@ else
     private List<Vocabulary> _items = new();
     private string _search = string.Empty;
     private bool _includeAsleep = true;
+    private string _level = string.Empty;
+    private bool _includeListWords;
 
     protected override async Task OnInitializedAsync()
     {
@@ -87,7 +112,8 @@ else
 
     private async Task LoadAsync()
     {
-        _items = await VocabularyService.GetAllAsync(_includeAsleep, _search);
+        _items = await VocabularyService.GetAllAsync(_includeAsleep, _search,
+            Enum.TryParse(_level, out JlptLevel level) ? level : null, _level == "none", _includeListWords);
     }
 
     private async Task OnSearchKey(KeyboardEventArgs e)

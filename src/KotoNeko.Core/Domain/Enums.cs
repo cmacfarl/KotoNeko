@@ -116,6 +116,19 @@ public static class SpeechSpeeds
     public static string Label(this SpeechSpeed speed) => $"{speed} ({speed.Rate():0.0}×)";
 }
 
+/// <summary>
+/// A JLPT level. The value is the level's number, so a larger value is an easier
+/// level (N5 is the easiest).
+/// </summary>
+public enum JlptLevel
+{
+    N1 = 1,
+    N2 = 2,
+    N3 = 3,
+    N4 = 4,
+    N5 = 5,
+}
+
 /// <summary>A loose categorisation for source materials, used only for display.</summary>
 public enum SourceKind
 {

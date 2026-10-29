@@ -38,4 +38,13 @@ public class StudySettings
     /// generating. Slow matches every clip generated before this setting existed.
     /// </summary>
     public SpeechSpeed SpeechSpeed { get; set; } = SpeechSpeed.Slow;
+
+    /// <summary>
+    /// The SRS stage at which a studied word joins the known-words pool:
+    /// <see cref="SrsStage.Guru1"/> or <see cref="SrsStage.Master"/>.
+    /// </summary>
+    public SrsStage KnownWordStage { get; set; } = SrsStage.Guru1;
+
+    /// <summary>The stages <see cref="KnownWordStage"/> may be set to.</summary>
+    public static readonly IReadOnlyList<SrsStage> KnownWordStages = new[] { SrsStage.Guru1, SrsStage.Master };
 }

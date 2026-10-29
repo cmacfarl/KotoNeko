@@ -1,6 +1,7 @@
 using KotoNeko.Core.Conjugation;
 using KotoNeko.Core.Domain;
 using KotoNeko.Data;
+using KotoNeko.Data.Vocab;
 using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services;
@@ -15,7 +16,14 @@ public class VocabularyService
         _factory = factory;
     }
 
-    public async Task<List<Vocabulary>> GetAllAsync(bool includeAsleep = true, string? search = null)
+    /// <summary>
+    /// Vocabulary for the list page, newest first. Seeded JLPT list words that are
+    /// still asleep and unstudied are left out unless <paramref name="includeListWords"/>
+    /// or a level is picked: there are thousands, and they'd bury the user's own words.
+    /// </summary>
+    public async Task<List<Vocabulary>> GetAllAsync(
+        bool includeAsleep = true, string? search = null,
+        JlptLevel? level = null, bool noLevel = false, bool includeListWords = true)
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
         IQueryable<Vocabulary> query = db.Vocabulary
@@ -27,6 +35,20 @@ public class VocabularyService
         if (!includeAsleep)
         {
             query = query.Where(v => !v.IsAsleep);
+        }
+
+        if (noLevel)
+        {
+            query = query.Where(v => v.JlptLevel == null);
+        }
+        else if (level is not null)
+        {
+            query = query.Where(v => v.JlptLevel == level);
+        }
+        else if (!includeListWords)
+        {
+            query = query.Where(v => !(v.IsAsleep && v.Srs == null
+                && v.SourceMaterial != null && v.SourceMaterial.Name == JlptWordLists.SourceName));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -82,6 +104,8 @@ public class VocabularyService
         entity.VerbClass = input.VerbClass;
         entity.DisplayFurigana = input.DisplayFurigana;
         entity.IsAsleep = input.IsAsleep;
+        entity.DoNotUse = input.DoNotUse;
+        entity.JlptLevel = input.JlptLevel;
         entity.SourceMaterialId = input.SourceMaterialId;
         entity.PlaySentenceAudioInReview = input.PlaySentenceAudioInReview;
 

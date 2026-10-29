@@ -6,6 +6,7 @@
 @inject JapaneseTtsService TtsService
 @inject SettingsService SettingsService
 @inject SentenceReadingService Readings
+@inject DictionaryService DictionaryService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -176,6 +177,20 @@
             <label style="display:flex;align-items:center;gap:0.4rem">
                 <input type="checkbox" @bind="vocab.IsAsleep" /> Asleep (excluded from lessons and reviews)
             </label>
+            <label style="display:flex;align-items:center;gap:0.4rem">
+                <input type="checkbox" @bind="vocab.DoNotUse" /> Do not use (kept out of practice sentences; doesn't count as known)
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem">
+                JLPT level
+                <select class="kn-select" style="max-width:120px" @bind="JlptLevelValue">
+                    <option value="">None</option>
+                    <option value="N5">N5</option>
+                    <option value="N4">N4</option>
+                    <option value="N3">N3</option>
+                    <option value="N2">N2</option>
+                    <option value="N1">N1</option>
+                </select>
+            </label>
         </div>
 
         <div class="kn-form-row">
@@ -230,10 +245,14 @@
         }
 
         <div class="kn-toolbar">
+            <button class="kn-btn kn-btn-primary" @onclick="FillFromDictionaryAsync" disabled="@_busy"
+                    title="Fill in from the imported dictionary, offline">
+                📖 Fill from dictionary
+            </button>
             <button class="kn-btn kn-btn-accent" @onclick="FetchFromJishoAsync" disabled="@_busy">
                 @(_busy ? "Fetching…" : "⤓ Fetch from jisho")
             </button>
-            <span class="kn-hint">Detects reading + verb class (and fills meaning if blank), then computes conjugations.</span>
+            <span class="kn-hint">Either fills in the reading and verb class (and meanings if blank), then computes conjugations. The dictionary works offline; jisho needs the internet.</span>
         </div>
     </div>
 
@@ -275,6 +294,13 @@
 </div>
 
 @code {
+    // The JLPT level picker works in strings: "" is no level.
+    private string JlptLevelValue
+    {
+        get => vocab.JlptLevel?.ToString() ?? string.Empty;
+        set => vocab.JlptLevel = Enum.TryParse(value, out JlptLevel level) ? level : null;
+    }
+
     [Parameter] public int? Id { get; set; }
 
     private Vocabulary vocab = new();
@@ -578,6 +604,68 @@
         if (pendingSentenceAudio is null) return;
         try { await JS.InvokeVoidAsync("kotoneko.playAudioBytes", pendingSentenceAudio); }
         catch { }
+    }
+
+    /// <summary>
+    /// Like Fetch from jisho, but offline from the imported dictionary: reading,
+    /// other readings, verb class (and conjugations), and the main sense as meanings
+    /// if none are entered yet.
+    /// </summary>
+    private async Task FillFromDictionaryAsync()
+    {
+        _error = null;
+        _message = null;
+
+        if (string.IsNullOrWhiteSpace(vocab.Japanese))
+        {
+            _error = "Enter the Japanese writing first.";
+            return;
+        }
+
+        if (await DictionaryService.NeedsReimportAsync(DictionaryImport.MeaningsFormatVersion))
+        {
+            _error = "The imported dictionary predates stored meanings. Re-import it from Settings, then try again.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            List<KotoNeko.Data.Dictionary.DictionaryWordMatch> matches = await DictionaryService.FindWordsAsync(vocab.Japanese);
+            if (matches.Count == 0)
+            {
+                _error = "The dictionary has no word written like that. Check the writing, or try jisho.";
+                return;
+            }
+
+            KotoNeko.Data.Dictionary.DictionaryWordMatch word = matches[0];
+            vocab.Reading = word.Reading;
+            readingLocked = false;
+            if (string.IsNullOrWhiteSpace(vocab.AlternateReadings) && word.OtherReadings.Count > 0)
+            {
+                vocab.AlternateReadings = string.Join(';', word.OtherReadings);
+            }
+
+            bool hasMeanings = meanings.Any(m => !string.IsNullOrWhiteSpace(m.Text));
+            if (!hasMeanings && word.MainMeanings.Count > 0)
+            {
+                meanings = word.MainMeanings.Select(m => new MeaningRow { Text = m }).ToList();
+            }
+
+            vocab.VerbClass = word.VerbClass;
+            if (word.VerbClass != VerbClass.None)
+            {
+                RegenerateConjugations();
+            }
+
+            string kind = word.VerbClass != VerbClass.None ? $"{VerbClassLabel(word.VerbClass)}; conjugations filled in" : "not a verb";
+            string others = matches.Count > 1 ? $" {matches.Count - 1} other word(s) share this spelling; this is the most common." : "";
+            _message = $"Filled in from the dictionary ({kind}).{others}";
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task FetchFromJishoAsync()

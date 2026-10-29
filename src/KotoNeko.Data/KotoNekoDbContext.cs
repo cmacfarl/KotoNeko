@@ -22,6 +22,7 @@ public class KotoNekoDbContext : DbContext
     public DbSet<StudySettings> StudySettings => Set<StudySettings>();
     public DbSet<DictionaryEntry> DictionaryEntries => Set<DictionaryEntry>();
     public DbSet<DictionaryImport> DictionaryImports => Set<DictionaryImport>();
+    public DbSet<DictionaryMeaning> DictionaryMeanings => Set<DictionaryMeaning>();
     public DbSet<ImeChoice> ImeChoices => Set<ImeChoice>();
     public DbSet<SentenceReading> SentenceReadings => Set<SentenceReading>();
     public DbSet<DictationAttempt> DictationAttempts => Set<DictationAttempt>();
@@ -68,6 +69,7 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.AlternateReadings).HasMaxLength(500).HasDefaultValue(string.Empty);
             entity.Property(e => e.ContextSentence).HasMaxLength(1000);
             entity.Property(e => e.Memo).HasMaxLength(1000);
+            entity.HasIndex(e => e.JlptLevel);
 
             // Computed properties; do not map them.
             entity.Ignore(e => e.IsVerb);
@@ -188,6 +190,13 @@ public class KotoNekoDbContext : DbContext
             entity.HasIndex(e => e.PracticedAt);
         });
 
+        modelBuilder.Entity<DictionaryMeaning>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Senses).HasColumnType("mediumtext").IsRequired();
+        });
+
         modelBuilder.Entity<ImeChoice>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -202,6 +211,8 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.Source).HasMaxLength(200);
             entity.Property(e => e.Version).HasMaxLength(100);
             entity.Property(e => e.DictionaryDate).HasMaxLength(50);
+            // Imports made before this column existed had no meanings: format 1.
+            entity.Property(e => e.FormatVersion).HasDefaultValue(1);
         });
     }
 }

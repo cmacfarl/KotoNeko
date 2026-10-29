@@ -37,6 +37,7 @@ public class SettingsService
         row.ListeningEnabled = input.ListeningEnabled;
         row.ListeningCountsTowardSrs = input.ListeningCountsTowardSrs;
         row.SpeechSpeed = Enum.IsDefined(input.SpeechSpeed) ? input.SpeechSpeed : SpeechSpeed.Slow;
+        row.KnownWordStage = StudySettings.KnownWordStages.Contains(input.KnownWordStage) ? input.KnownWordStage : SrsStage.Guru1;
 
         await db.SaveChangesAsync();
     }

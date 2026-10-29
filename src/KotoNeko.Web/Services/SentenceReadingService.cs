@@ -6,6 +6,7 @@ using KotoNeko.Core.Domain;
 using KotoNeko.Core.Ime;
 using KotoNeko.Core.Text;
 using KotoNeko.Data;
+using KotoNeko.Data.Vocab;
 using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services;
@@ -175,14 +176,17 @@ public sealed class SentenceReadingService
     }
 
     /// <summary>
-    /// Words the reader knows well enough to read without furigana: vocabulary at
-    /// Guru or above, except items set to always show furigana.
+    /// Words the reader knows well enough to read without furigana: the known-words
+    /// pool (see <see cref="KnownWords"/>), except studied items set to show furigana,
+    /// since those are being learned without their kanji reading.
     /// </summary>
     public async Task<HashSet<string>> KnownWordsAsync()
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        SrsStage threshold = (await SettingsService.LoadAsync(db)).KnownWordStage;
         List<string> known = await db.Vocabulary.AsNoTracking()
-            .Where(v => !v.DisplayFurigana && v.Srs != null && v.Srs.Stage >= SrsStage.Guru1)
+            .InPool(threshold)
+            .Where(v => !(v.DisplayFurigana && v.Srs != null && v.Srs.Stage != SrsStage.Locked))
             .Select(v => v.Japanese)
             .ToListAsync();
         return known.ToHashSet(StringComparer.Ordinal);

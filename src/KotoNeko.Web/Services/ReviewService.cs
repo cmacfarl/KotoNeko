@@ -3,6 +3,7 @@ using KotoNeko.Core.Domain;
 using KotoNeko.Core.Review;
 using KotoNeko.Core.Text;
 using KotoNeko.Data;
+using KotoNeko.Data.Vocab;
 using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services;
@@ -172,8 +173,9 @@ public class ReviewService
 
     /// <summary>
     /// Every word sharing a reading with an item that will get a listening
-    /// question, keyed by reading. Loaded untracked so it never collides with the
-    /// session's tracked items.
+    /// question, keyed by reading, leaving out words held back as unknown (see
+    /// <see cref="KnownWords.NotHeldBack"/>). Loaded untracked so it never collides
+    /// with the session's tracked items.
     /// </summary>
     private static async Task<ILookup<string, Vocabulary>> LoadHomophonesAsync(
         KotoNekoDbContext db, List<Vocabulary> items)
@@ -181,6 +183,7 @@ public class ReviewService
         List<string> readings = items.Where(v => v.HasWordAudio).Select(v => v.Reading).Distinct().ToList();
         List<Vocabulary> sameSound = await db.Vocabulary
             .AsNoTracking()
+            .NotHeldBack()
             .Include(v => v.Meanings)
             .Where(v => readings.Contains(v.Reading))
             .ToListAsync();

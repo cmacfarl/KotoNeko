@@ -2,6 +2,8 @@ using KotoNeko.Core.Domain;
 using KotoNeko.Core.Ime;
 using KotoNeko.Core.Text;
 using KotoNeko.Data;
+using KotoNeko.Data.Dictionary;
+using KotoNeko.Data.Vocab;
 using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services;
@@ -30,6 +32,46 @@ public class DictionaryService : IDictionaryLookup
         return await db.DictionaryImports.AsNoTracking().OrderByDescending(i => i.ImportedAt).FirstOrDefaultAsync();
     }
 
+    /// <summary>
+    /// Dictionary words written exactly <paramref name="written"/>, best first, with
+    /// their readings, verb class and meanings. Empty when nothing matches or no
+    /// dictionary is imported.
+    /// </summary>
+    public async Task<List<DictionaryWordMatch>> FindWordsAsync(string written)
+    {
+        written = written.Trim();
+        if (written.Length == 0 || written.Length > DictionaryEntry.MaxLength) {
+            return new List<DictionaryWordMatch>();
+        }
+
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        List<DictionaryEntry> entries = await db.DictionaryEntries
+            .FromSqlRaw("SELECT * FROM `DictionaryEntries` WHERE `Written` = {0}", written)
+            .AsNoTracking()
+            .ToListAsync();
+        if (entries.Count == 0) {
+            return new List<DictionaryWordMatch>();
+        }
+
+        List<int> ids = entries.Select(e => e.WordId).Distinct().ToList();
+        Dictionary<int, DictionaryMeaning> meanings = await db.DictionaryMeanings
+            .FromSqlRaw($"SELECT * FROM `DictionaryMeanings` WHERE `Id` IN ({string.Join(",", ids)})")
+            .AsNoTracking()
+            .ToDictionaryAsync(m => m.Id);
+
+        return DictionaryWords.Match(written, entries, meanings);
+    }
+
+    /// <summary>
+    /// True when a dictionary is imported but in a format older than
+    /// <paramref name="formatVersion"/>: the feature needing it asks for a re-import.
+    /// </summary>
+    public async Task<bool> NeedsReimportAsync(int formatVersion)
+    {
+        DictionaryImport? import = await GetImportAsync();
+        return import is not null && import.FormatVersion < formatVersion;
+    }
+
     public async Task<IReadOnlyList<DictionaryWord>> LookupAsync(IReadOnlyCollection<string> readings)
     {
         if (readings.Count == 0) {
@@ -54,8 +96,7 @@ public class DictionaryService : IDictionaryLookup
         }
 
         // The user's own words are always known, even ones the dictionary lacks.
-        var vocabulary = await db.Vocabulary
-            .AsNoTracking()
+        var vocabulary = await OwnWords(db)
             .Select(v => new { v.Japanese, v.Reading, v.VerbClass })
             .ToListAsync();
         foreach (var v in vocabulary) {
@@ -90,8 +131,7 @@ public class DictionaryService : IDictionaryLookup
         }
 
         // The user's own words, with the reading they learned: these win.
-        var vocabulary = await db.Vocabulary
-            .AsNoTracking()
+        var vocabulary = await OwnWords(db)
             .Select(v => new { v.Japanese, v.Reading, v.VerbClass })
             .ToListAsync();
         foreach (var v in vocabulary.Where(v => wanted.Contains(v.Japanese))) {
@@ -101,6 +141,9 @@ public class DictionaryService : IDictionaryLookup
 
         return words;
     }
+
+    /// <summary>Vocabulary the converter prefers over the dictionary's order (see <see cref="KnownWords.NotHeldBack"/>).</summary>
+    private static IQueryable<Vocabulary> OwnWords(KotoNekoDbContext db) => db.Vocabulary.AsNoTracking().NotHeldBack();
 
     /// <summary>
     /// Mark the words the user picked before. A past choice no word explains (a

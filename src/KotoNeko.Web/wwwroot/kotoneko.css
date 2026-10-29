@@ -824,6 +824,9 @@ kbd {
 
 .kn-pill-verb { background: var(--kn-guru); }
 .kn-pill-asleep { background: #aaa; }
+.kn-pill-jlpt { background: #3a7bd5; }
+.kn-pill-donotuse { background: #c0504d; }
+.kn-pill-known { background: #5a9e2f; }
 .kn-pill-stage { background: var(--kn-master); }
 
 .kn-hint { color: var(--kn-muted); font-size: 0.82rem; margin-top: 0.25rem; }

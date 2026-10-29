@@ -43,6 +43,14 @@ builder.Services.AddHttpClient(DictionaryImportService.HttpClientName, client =>
 });
 builder.Services.AddSingleton<DictionaryImportService>();
 
+// The known-words pool; seeding downloads the JLPT word lists from GitHub.
+builder.Services.AddHttpClient(KnownWordsService.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(1);
+    client.DefaultRequestHeaders.Add("User-Agent", "KotoNeko/1.0 (personal study app)");
+});
+builder.Services.AddScoped<KnownWordsService>();
+
 // Sentence readings (furigana) are generated in the background, never mid-review.
 builder.Services.AddSingleton<SentenceReadingService>();
 builder.Services.AddHostedService<SentenceReadingStartup>();

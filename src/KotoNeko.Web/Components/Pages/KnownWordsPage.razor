@@ -1,0 +1,267 @@
+@page "/known-words"
+@inject KnownWordsService KnownWords
+@using KotoNeko.Data.Vocab
+
+<PageTitle>Known words · KotoNeko</PageTitle>
+
+<h1>Known words</h1>
+
+<p class="kn-hint">
+    Practice sentences may use only words you know besides the one being practised, and known words show no furigana.
+    A word counts as known unless it's marked <strong>do not use</strong>, and it's either asleep and not studied
+    (a word you know but don't review) or one you're studying that has reached the stage set in
+    <a href="/settings">Settings</a>.
+</p>
+
+@if (_message is not null)
+{
+    <div class="kn-msg @(_messageIsError ? "kn-msg-err" : "kn-msg-ok")">@_message</div>
+}
+
+@if (_summary is { } summary)
+{
+    <div class="kn-panel">
+        <p>
+            <strong>@summary.InPool.ToString("N0")</strong> of @summary.Total.ToString("N0") words count as known;
+            @summary.DoNotUse.ToString("N0") are marked do not use.
+            @if (summary.ByLevel.Count > 0)
+            {
+                <span class="kn-hint">
+                    On the JLPT lists: @string.Join(" · ", summary.ByLevel.OrderByDescending(l => l.Key).Select(l => $"{l.Key} {l.Value:N0}")).
+                </span>
+            }
+        </p>
+
+        <h2>I know this word</h2>
+        <div class="kn-toolbar">
+            <div style="flex:1;max-width:320px">
+                <JapaneseInput @ref="_knownInput" Placeholder="A word you know…" OnChanged="t => _knownText = t.Text" OnSubmit="MarkKnownAsync" />
+            </div>
+            <button class="kn-btn" @onclick="MarkKnownAsync" disabled="@_busy">I know this</button>
+        </div>
+        <p class="kn-hint">
+            Clears "do not use" if the word is already here; otherwise adds it from the dictionary, asleep, as a known word.
+        </p>
+
+        <h2>JLPT word lists</h2>
+        <p>
+            Adds every N5, N4 and N3 word (about 3,000) asleep, with readings, meanings and verb classes from the dictionary.
+            N5 and N4 words count as known straight away; <strong>N3 words start as do not use</strong>, so pick out the ones you know below.
+            Words already here keep their source and get their level filled in. Running it again changes nothing.
+        </p>
+        <button class="kn-btn kn-btn-primary" @onclick="SeedAsync" disabled="@(_busy || KnownWordsService.IsSeeding)">
+            @(KnownWordsService.IsSeeding ? "Adding the lists…" : "⭳ Download and add the JLPT word lists")
+        </button>
+        <p class="kn-hint">
+            The lists are Jonathan Waller's JLPT vocabulary lists (tanos.co.uk, CC BY), downloaded with their JMdict entry numbers
+            from stephenmk/yomitan-jlpt-vocab on GitHub (CC BY-SA 4.0), about 150 KB. Seeded words get no audio until you study one.
+        </p>
+    </div>
+}
+
+<div class="kn-toolbar">
+    <input class="kn-input" style="max-width:220px" placeholder="Search…" @bind="_search" @bind:event="oninput" @onkeyup="LoadAsync" />
+    <select class="kn-select" style="max-width:180px" @bind="_level" @bind:after="LoadAsync">
+        <option value="">Any JLPT level</option>
+        <option value="N5">N5</option>
+        <option value="N4">N4</option>
+        <option value="N3">N3</option>
+        <option value="none">No level</option>
+    </select>
+    <select class="kn-select" style="max-width:220px" @bind="_status" @bind:after="LoadAsync">
+        <option value="@KnownWordsStatus.All">All words</option>
+        <option value="@KnownWordsStatus.InPool">Known</option>
+        <option value="@KnownWordsStatus.DoNotUse">Do not use</option>
+        <option value="@KnownWordsStatus.AsleepUnstudied">Asleep, not studied</option>
+        <option value="@KnownWordsStatus.Studying">Studying</option>
+    </select>
+</div>
+
+@if (_rows.Count > 0)
+{
+    <div class="kn-toolbar">
+        <span class="kn-hint">@_rows.Count.ToString("N0") words shown.</span>
+        <button class="kn-btn kn-btn-sm" @onclick="() => SetAllAsync(true)" disabled="@_busy">Mark all @_rows.Count.ToString("N0") do not use</button>
+        <button class="kn-btn kn-btn-sm" @onclick="() => SetAllAsync(false)" disabled="@_busy">Clear do not use on all @_rows.Count.ToString("N0")</button>
+    </div>
+
+    <div class="kn-wide-view">
+    <div class="kn-panel">
+        <table class="kn-table">
+            <thead>
+            <tr>
+                <th style="white-space:nowrap">Word</th>
+                <th style="white-space:nowrap">Reading</th>
+                <th>Meaning</th>
+                <th style="white-space:nowrap">Level</th>
+                <th style="white-space:nowrap">Status</th>
+                <th style="white-space:nowrap" title="Kept out of practice sentences; doesn't count as known">Do not use</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (KnownWordRow row in _rows.Take(_shown))
+            {
+                <tr>
+                    <td style="white-space:nowrap"><a class="kn-jp" href="/vocab/@row.Id">@row.Japanese</a></td>
+                    <td style="white-space:nowrap">@row.Reading</td>
+                    <td>@row.Meaning</td>
+                    <td>@(row.Level?.ToString() ?? "—")</td>
+                    <td style="white-space:nowrap">
+                        @if (row.InPool)
+                        {
+                            <span class="kn-pill kn-pill-known">known</span>
+                        }
+                        @if (row.Stage is { } stage && stage != SrsStage.Locked)
+                        {
+                            <span class="kn-pill kn-pill-stage">@SrsSchedule.DisplayName(stage)</span>
+                        }
+                        else if (row.IsAsleep)
+                        {
+                            <span class="kn-pill kn-pill-asleep">asleep</span>
+                        }
+                        else
+                        {
+                            <span style="color:#bbb">awaiting lesson</span>
+                        }
+                    </td>
+                    <td style="text-align:center">
+                        <input type="checkbox" checked="@row.DoNotUse" @onchange="e => ToggleAsync(row, e.Value is true)" />
+                    </td>
+                    <td style="text-align:right;white-space:nowrap">
+                        @if (row.IsAsleep && row.Stage is null)
+                        {
+                            <button class="kn-btn kn-btn-sm" @onclick="() => StudyAsync(row)" disabled="@_busy"
+                                    title="Wake it so it enters your lessons">Study</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (_rows.Count > _shown)
+        {
+            <button class="kn-btn" @onclick="() => _shown += PageSize">Show @Math.Min(PageSize, _rows.Count - _shown) more</button>
+        }
+    </div>
+    </div>
+}
+else if (_summary is not null)
+{
+    <div class="kn-panel"><p class="kn-empty">No words match.</p></div>
+}
+
+@code {
+    private const int PageSize = 200;
+
+    private KnownWordsSummary? _summary;
+    private List<KnownWordRow> _rows = new();
+    private int _shown = PageSize;
+    private string _search = string.Empty;
+    private string _level = string.Empty;
+    private KnownWordsStatus _status = KnownWordsStatus.All;
+    private string _knownText = string.Empty;
+    private JapaneseInput? _knownInput;
+    private bool _busy;
+    private string? _message;
+    private bool _messageIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _summary = await KnownWords.GetSummaryAsync();
+        _rows = await KnownWords.ListAsync(
+            Enum.TryParse(_level, out JlptLevel level) ? level : null, _level == "none", _status, _search);
+        _shown = PageSize;
+    }
+
+    private void Show(string message, bool error = false)
+    {
+        _message = message;
+        _messageIsError = error;
+    }
+
+    private async Task ToggleAsync(KnownWordRow row, bool doNotUse)
+    {
+        await KnownWords.SetDoNotUseAsync(new[] { row.Id }, doNotUse);
+        int index = _rows.IndexOf(row);
+        _summary = await KnownWords.GetSummaryAsync();
+        // Keep the row where it is, so the list doesn't jump while you work down it.
+        List<KnownWordRow> fresh = await KnownWords.ListAsync(null, false, KnownWordsStatus.All, row.Japanese);
+        if (index >= 0 && fresh.FirstOrDefault(r => r.Id == row.Id) is { } updated) {
+            _rows[index] = updated;
+        }
+    }
+
+    private async Task SetAllAsync(bool doNotUse)
+    {
+        _busy = true;
+        try {
+            await KnownWords.SetDoNotUseAsync(_rows.Select(r => r.Id).ToList(), doNotUse);
+            Show(doNotUse
+                ? $"Marked {_rows.Count:N0} words do not use."
+                : $"Cleared do not use on {_rows.Count:N0} words.");
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task StudyAsync(KnownWordRow row)
+    {
+        _busy = true;
+        try {
+            string? note = await KnownWords.StudyAsync(row.Id);
+            Show(note ?? $"{row.Japanese} is awake and will come up in your lessons.", note is not null);
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task MarkKnownAsync()
+    {
+        if (_busy) {
+            return;
+        }
+        _busy = true;
+        try {
+            Show(await KnownWords.MarkKnownAsync(_knownText));
+            if (_knownInput is not null) {
+                await _knownInput.ClearAsync();
+            }
+            _knownText = string.Empty;
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task SeedAsync()
+    {
+        _busy = true;
+        Show("Downloading the lists and adding their words. This takes a minute or so; you can leave the page.");
+        StateHasChanged();
+        try {
+            JlptSeedResult? result = await KnownWords.SeedAsync();
+            if (result is null) {
+                Show("The lists are already being added.");
+            } else {
+                string missing = result.NotInDictionary > 0
+                    ? $" {result.NotInDictionary:N0} weren't in the dictionary and use the list's own meanings."
+                    : "";
+                Show($"Added {result.Added:N0} words. {result.AlreadyThere:N0} were already here" +
+                     (result.LevelsFilled > 0 ? $" ({result.LevelsFilled:N0} got their level filled in)." : ".") + missing);
+            }
+            await LoadAsync();
+        } catch (Exception ex) {
+            Show($"Adding the lists failed: {ex.Message}", error: true);
+        } finally {
+            _busy = false;
+        }
+    }
+}

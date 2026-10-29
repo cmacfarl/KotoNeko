@@ -37,6 +37,7 @@ public static class JmdictImporter
 
     private const int BatchSize = 1000;
     private const int ReadProgressEvery = 5000;
+    private static readonly TimeSpan ImportCommandTimeout = TimeSpan.FromMinutes(10);
 
     // Order = word position × slots + spelling position, so spellings of one word stay in JMdict's order.
     private const int SpellingSlots = 32;
@@ -77,19 +78,30 @@ public static class JmdictImporter
         }
 
         List<DictionaryEntry> rows = builder.Entries;
-        progress?.Report(new ImportProgress(ImportStage.Writing, 0, rows.Count));
+        progress?.Report(new ImportProgress(ImportStage.Writing, 0, rows.Count + builder.Meanings.Count));
 
+        // Deleting the old dictionary's half-million rows can take longer than the
+        // default 30-second command timeout; cancellation still stops it.
+        db.Database.SetCommandTimeout(ImportCommandTimeout);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM `DictionaryEntries`;", cancellationToken);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM `DictionaryMeanings`;", cancellationToken);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM `DictionaryImports`;", cancellationToken);
         // Readings worked out from the old dictionary are stale: drop them so they
         // are rebuilt from this one. Readings the user corrected are kept.
         await db.Database.ExecuteSqlRawAsync("DELETE FROM `SentenceReadings` WHERE `IsEdited` = 0;", cancellationToken);
 
+        List<DictionaryMeaning> meanings = builder.Meanings;
+        long written = rows.Count + meanings.Count;
         for (int i = 0; i < rows.Count; i += BatchSize)
         {
             await InsertBatchAsync(db, rows.GetRange(i, Math.Min(BatchSize, rows.Count - i)), cancellationToken);
-            progress?.Report(new ImportProgress(ImportStage.Writing, Math.Min(i + BatchSize, rows.Count), rows.Count));
+            progress?.Report(new ImportProgress(ImportStage.Writing, Math.Min(i + BatchSize, rows.Count), written));
+        }
+        for (int i = 0; i < meanings.Count; i += BatchSize)
+        {
+            await InsertMeaningsAsync(db, meanings.GetRange(i, Math.Min(BatchSize, meanings.Count - i)), cancellationToken);
+            progress?.Report(new ImportProgress(ImportStage.Writing, rows.Count + Math.Min(i + BatchSize, meanings.Count), written));
         }
 
         db.DictionaryImports.Add(new DictionaryImport
@@ -98,6 +110,7 @@ public static class JmdictImporter
             Version = reader.Version,
             DictionaryDate = reader.DictDate,
             ImportedAt = DateTime.UtcNow,
+            FormatVersion = DictionaryImport.CurrentFormatVersion,
             EntryCount = rows.Count,
         });
         await db.SaveChangesAsync(cancellationToken);
@@ -133,9 +146,19 @@ public static class JmdictImporter
 
         public List<DictionaryEntry> Entries => _best.Values.ToList();
 
+        /// <summary>Each word's senses, by word id (its JMdict entry number).</summary>
+        public List<DictionaryMeaning> Meanings { get; } = new();
+
         public void Add(JmdictWord word)
         {
             int order = WordCount++;
+            // Words are keyed by JMdict's own entry number, so lists that name
+            // entries (the JLPT lists) can find them.
+            if (!int.TryParse(word.Id, out int wordId))
+            {
+                throw new InvalidDataException($"Word {order + 1} has no numeric JMdict id: is this a jmdict-simplified JSON file?");
+            }
+            Meanings.Add(new DictionaryMeaning { Id = wordId, Senses = DictionarySenses.Serialize(Senses(word)) });
             List<string> pos = word.Sense.SelectMany(s => s.PartOfSpeech).Distinct().ToList();
             // Usually written in kana: judged on the main sense only, since a minor
             // sense marked "uk" (遭う in 会う's entry) says nothing about the word.
@@ -163,25 +186,25 @@ public static class JmdictImporter
                         + (uk ? 3 : 0);
                     // Within a word, JMdict lists the main spelling first (会う before 逢う).
                     int spellingOrder = order * SpellingSlots + Math.Min(kanji.IndexOf(k), SpellingSlots - 2);
-                    Put(reading, k.Text, type, rank, spellingOrder, uk, particle);
+                    Put(wordId, reading, k.Text, type, rank, spellingOrder, uk, particle);
                     if (takesSuru)
                     {
-                        Put(reading + "する", k.Text + "する", WordType.Suru, rank, spellingOrder, uk, false);
+                        Put(wordId, reading + "する", k.Text + "する", WordType.Suru, rank, spellingOrder, uk, false);
                     }
                 }
 
                 // The kana spelling: the main one for katakana words and words usually in kana.
                 int kanaRank = (kana.Common ? 0 : 10) + kanaPenalty + (kanji.Count > 0 && !uk ? 5 : 0);
                 int kanaOrder = order * SpellingSlots + SpellingSlots - 1;
-                Put(reading, kana.Text, type, kanaRank, kanaOrder, uk, particle);
+                Put(wordId, reading, kana.Text, type, kanaRank, kanaOrder, uk, particle);
                 if (takesSuru)
                 {
-                    Put(reading + "する", kana.Text + "する", WordType.Suru, kanaRank, kanaOrder, uk, false);
+                    Put(wordId, reading + "する", kana.Text + "する", WordType.Suru, kanaRank, kanaOrder, uk, false);
                 }
             }
         }
 
-        private void Put(string reading, string written, WordType type, int rank, int order, bool uk, bool particle)
+        private void Put(int wordId, string reading, string written, WordType type, int rank, int order, bool uk, bool particle)
         {
             if (reading.Length == 0 || reading.Length > DictionaryEntry.MaxLength || written.Length > DictionaryEntry.MaxLength)
             {
@@ -200,6 +223,7 @@ public static class JmdictImporter
 
             _best[(reading, written)] = new DictionaryEntry
             {
+                WordId = wordId,
                 Reading = reading,
                 Written = written,
                 Type = type,
@@ -210,6 +234,16 @@ public static class JmdictImporter
             };
         }
     }
+
+    /// <summary>A word's senses: its English glosses, parts of speech and any spelling limits.</summary>
+    private static List<DictionarySense> Senses(JmdictWord word) => word.Sense
+        .Select(s => new DictionarySense(
+            s.Gloss.Where(g => g.Lang == "eng" && !string.IsNullOrWhiteSpace(g.Text)).Select(g => g.Text).ToList(),
+            s.PartOfSpeech,
+            s.AppliesToKanji.Contains("*") ? null : s.AppliesToKanji,
+            s.AppliesToKana.Contains("*") ? null : s.AppliesToKana))
+        .Where(s => s.Glosses.Count > 0)
+        .ToList();
 
     /// <summary>How a word inflects, from its JMdict part-of-speech codes.</summary>
     private static WordType TypeOf(IEnumerable<string> pos)
@@ -232,14 +266,15 @@ public static class JmdictImporter
 
     private static async Task InsertBatchAsync(KotoNekoDbContext db, List<DictionaryEntry> batch, CancellationToken cancellationToken)
     {
-        StringBuilder sql = new("INSERT INTO `DictionaryEntries` (`Reading`, `Written`, `Type`, `Rank`, `Order`, `UsuallyKana`, `ParticleLike`) VALUES ");
-        List<object> values = new(batch.Count * 7);
+        StringBuilder sql = new("INSERT INTO `DictionaryEntries` (`WordId`, `Reading`, `Written`, `Type`, `Rank`, `Order`, `UsuallyKana`, `ParticleLike`) VALUES ");
+        List<object> values = new(batch.Count * 8);
         for (int i = 0; i < batch.Count; i++)
         {
             DictionaryEntry e = batch[i];
             int p = values.Count;
             sql.Append(i == 0 ? "" : ",")
-                .Append($"({{{p}}},{{{p + 1}}},{{{p + 2}}},{{{p + 3}}},{{{p + 4}}},{{{p + 5}}},{{{p + 6}}})");
+                .Append($"({{{p}}},{{{p + 1}}},{{{p + 2}}},{{{p + 3}}},{{{p + 4}}},{{{p + 5}}},{{{p + 6}}},{{{p + 7}}})");
+            values.Add(e.WordId);
             values.Add(e.Reading);
             values.Add(e.Written);
             values.Add((int)e.Type);
@@ -250,12 +285,38 @@ public static class JmdictImporter
         }
         await db.Database.ExecuteSqlRawAsync(sql.ToString(), values, cancellationToken);
     }
+
+    private static async Task InsertMeaningsAsync(KotoNekoDbContext db, List<DictionaryMeaning> batch, CancellationToken cancellationToken)
+    {
+        StringBuilder sql = new("INSERT INTO `DictionaryMeanings` (`Id`, `Senses`) VALUES ");
+        List<object> values = new(batch.Count * 2);
+        for (int i = 0; i < batch.Count; i++)
+        {
+            int p = values.Count;
+            sql.Append(i == 0 ? "" : ",").Append($"({{{p}}},{{{p + 1}}})");
+            values.Add(batch[i].Id);
+            values.Add(batch[i].Senses);
+        }
+        await db.Database.ExecuteSqlRawAsync(sql.ToString(), values, cancellationToken);
+    }
+
+    /// <summary>Each word's senses, as built from the dictionary (for tests).</summary>
+    public static List<DictionaryMeaning> BuildMeanings(IEnumerable<JmdictWord> words)
+    {
+        EntryBuilder builder = new();
+        foreach (JmdictWord word in words)
+        {
+            builder.Add(word);
+        }
+        return builder.Meanings;
+    }
 }
 
 // The parts of the jmdict-simplified JSON format the importer uses.
 
 public sealed class JmdictWord
 {
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("kanji")] public List<JmdictForm> Kanji { get; set; } = new();
     [JsonPropertyName("kana")] public List<JmdictKana> Kana { get; set; } = new();
     [JsonPropertyName("sense")] public List<JmdictSense> Sense { get; set; } = new();
@@ -277,4 +338,13 @@ public sealed class JmdictSense
 {
     [JsonPropertyName("partOfSpeech")] public List<string> PartOfSpeech { get; set; } = new();
     [JsonPropertyName("misc")] public List<string> Misc { get; set; } = new();
+    [JsonPropertyName("appliesToKanji")] public List<string> AppliesToKanji { get; set; } = new() { "*" };
+    [JsonPropertyName("appliesToKana")] public List<string> AppliesToKana { get; set; } = new() { "*" };
+    [JsonPropertyName("gloss")] public List<JmdictGloss> Gloss { get; set; } = new();
+}
+
+public sealed class JmdictGloss
+{
+    [JsonPropertyName("lang")] public string Lang { get; set; } = "eng";
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
 }
