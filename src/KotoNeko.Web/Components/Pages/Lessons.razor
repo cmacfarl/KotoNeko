@@ -6,6 +6,16 @@
 {
     <p class="kn-empty">Loading lessons…</p>
 }
+else if (_allowance is { LeftToday: 0 })
+{
+    <div class="kn-session-done">
+        <div class="big">🌙</div>
+        <h1>That's today's lessons</h1>
+        <p>You've learned @_allowance.DoneToday of your @_allowance.Cap new items today. Reviews still run as they come due.</p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+        <a class="kn-btn" href="/settings">Change the daily cap</a>
+    </div>
+}
 else if (_session is null)
 {
     <div class="kn-session-done">
@@ -22,12 +32,18 @@ else
 
 @code {
     private ReviewSession? _session;
+    private LessonAllowance? _allowance;
     private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
     {
-        // Teach a handful at a time, like WaniKani's lesson batches.
-        _session = await ReviewService.BuildLessonSessionAsync(DateTime.UtcNow, max: 5);
+        // Teach a handful at a time, like WaniKani's lesson batches, within the daily cap.
+        DateTime now = DateTime.UtcNow;
+        _allowance = await ReviewService.GetLessonAllowanceAsync(now);
+        if (_allowance.LeftToday > 0) {
+            _session = await ReviewService.BuildLessonSessionAsync(now,
+                max: Math.Min(_allowance.BatchSize, _allowance.LeftToday));
+        }
         _loading = false;
     }
 

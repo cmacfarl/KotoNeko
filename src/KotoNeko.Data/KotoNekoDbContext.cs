@@ -19,6 +19,7 @@ public class KotoNekoDbContext : DbContext
     public DbSet<ReviewLog> ReviewLogs => Set<ReviewLog>();
     public DbSet<VocabularyAudio> VocabularyAudios => Set<VocabularyAudio>();
     public DbSet<ConjugatedAudio> ConjugatedAudios => Set<ConjugatedAudio>();
+    public DbSet<StudySettings> StudySettings => Set<StudySettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -138,6 +139,14 @@ public class KotoNekoDbContext : DbContext
                 .HasForeignKey<ConjugatedAudio>(a => a.ConjugationId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.ConjugationId).IsUnique();
+        });
+
+        // A single row holding the user's preferences, seeded with the defaults.
+        modelBuilder.Entity<StudySettings>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasData(new StudySettings());
         });
     }
 }

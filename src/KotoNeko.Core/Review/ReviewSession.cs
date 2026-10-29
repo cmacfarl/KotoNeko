@@ -38,13 +38,28 @@ public class ReviewSession
     private readonly Random _random;
     private readonly HashSet<int> _committedCardIndices = new();
     private int _committedLogCount = 0;
+    private readonly IReadOnlySet<QuestionType> _practiceOnlyTypes;
 
-    public ReviewSession(IReadOnlyList<ReviewCard> cards, SessionKind kind, DateTime now, int randomSeed)
+    /// <summary>Conjugation misses never affect the SRS stage unless told otherwise.</summary>
+    public static readonly IReadOnlySet<QuestionType> DefaultPracticeOnlyTypes =
+        new HashSet<QuestionType> { QuestionType.Conjugation };
+
+    /// <param name="practiceOnlyTypes">
+    /// Question types whose misses are logged but do not affect the SRS stage or
+    /// the session's correct/incorrect counts. Defaults to <see cref="DefaultPracticeOnlyTypes"/>.
+    /// </param>
+    public ReviewSession(
+        IReadOnlyList<ReviewCard> cards,
+        SessionKind kind,
+        DateTime now,
+        int randomSeed,
+        IReadOnlySet<QuestionType>? practiceOnlyTypes = null)
     {
         _cards = cards.ToList();
         Kind = kind;
         _now = now;
         _random = new Random(randomSeed);
+        _practiceOnlyTypes = practiceOnlyTypes ?? DefaultPracticeOnlyTypes;
 
         for (int c = 0; c < _cards.Count; c++)
         {
@@ -55,6 +70,7 @@ public class ReviewSession
         }
 
         Shuffle(_queue);
+        PutListeningFirst(_queue);
         TotalQuestions = _queue.Count;
     }
 
@@ -167,10 +183,11 @@ public class ReviewSession
 
     private void FinaliseCard(ReviewCard card)
     {
-        // Conjugation questions are practice-only: their misses do not affect the
-        // SRS stage or the session-level correct/incorrect counters.
+        // Practice-only questions (conjugation, and listening unless configured
+        // otherwise): their misses do not affect the SRS stage or the
+        // session-level correct/incorrect counters.
         int srsIncorrect = card.Questions
-            .Count(q => q.Type != QuestionType.Conjugation && q.MissedAtLeastOnce);
+            .Count(q => !_practiceOnlyTypes.Contains(q.Type) && q.MissedAtLeastOnce);
 
         // A lesson teaches the item; it does not penalise misses made while learning.
         if (Kind == SessionKind.Lesson && card.Srs.Stage == SrsStage.Locked) {
@@ -212,6 +229,22 @@ public class ReviewSession
         for (int i = list.Count - 1; i > 0; i--) {
             int j = _random.Next(i + 1);
             (list[i], list[j]) = (list[j], list[i]);
+        }
+    }
+
+    /// <summary>
+    /// A listening question must come before the rest of its card: any other
+    /// question shows the word or its meanings, which would give the answer away.
+    /// Swap each card's listening question with that card's earliest question.
+    /// </summary>
+    private void PutListeningFirst(List<QRef> list) {
+        for (int c = 0; c < _cards.Count; c++) {
+            int listening = list.FindIndex(r => r.Card == c
+                && _cards[c].Questions[r.Question].Type == QuestionType.Listening);
+            int first = list.FindIndex(r => r.Card == c);
+            if (listening > first) {
+                (list[listening], list[first]) = (list[first], list[listening]);
+            }
         }
     }
 

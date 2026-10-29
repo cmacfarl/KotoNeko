@@ -218,6 +218,46 @@ namespace KotoNeko.Data.Migrations
                     b.UseTptMappingStrategy();
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.StudySettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DailyLessonCap")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DailyMinutesTarget")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LessonBatchSize")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ListeningCountsTowardSrs")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ListeningEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("SpeechSpeed")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StudySettings");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            DailyLessonCap = 15,
+                            DailyMinutesTarget = 60,
+                            LessonBatchSize = 5,
+                            ListeningCountsTowardSrs = false,
+                            ListeningEnabled = true,
+                            SpeechSpeed = 0
+                        });
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.VocabularyAudio", b =>
                 {
                     b.Property<int>("Id")

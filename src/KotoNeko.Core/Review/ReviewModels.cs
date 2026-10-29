@@ -31,6 +31,12 @@ public class ReviewQuestion
     /// <summary>Set only when the conjugation has audio; used to play the correct clip in reviews.</summary>
     public int? ConjugationId { get; init; }
 
+    /// <summary>
+    /// For listening questions: other words that sound the same. A meaning of any
+    /// of them is accepted, since it is what the user actually heard.
+    /// </summary>
+    public IReadOnlyList<Homophone> Homophones { get; init; } = Array.Empty<Homophone>();
+
     /// <summary>True once answered correctly (and so cleared from the card).</summary>
     public bool Answered { get; set; }
 
@@ -43,9 +49,45 @@ public class ReviewQuestion
         QuestionType.Meaning    => AnswerMatcher.GradeMeaning(typed, ExpectedPrimary, ExpectedAlternates),
         QuestionType.Conjugation => AnswerMatcher.GradeConjugation(typed, ExpectedPrimary),
         QuestionType.Production => AnswerMatcher.GradeReading(typed, ExpectedPrimary, ExpectedAlternates),
+        QuestionType.Listening  => GradeListening(typed),
         _ => AnswerJudgment.Incorrect,
     };
+
+    /// <summary>
+    /// For a correct listening answer, the homophone whose meaning was typed, or
+    /// null when the answer matched this item's own meanings.
+    /// </summary>
+    public Homophone? MatchedHomophone(string typed)
+    {
+        if (Type != QuestionType.Listening
+            || AnswerMatcher.GradeMeaning(typed, ExpectedPrimary, ExpectedAlternates) == AnswerJudgment.Correct)
+        {
+            return null;
+        }
+
+        return Homophones.FirstOrDefault(h =>
+            AnswerMatcher.GradeMeaning(typed, h.PrimaryMeaning, h.AlternateMeanings) == AnswerJudgment.Correct);
+    }
+
+    private AnswerJudgment GradeListening(string typed)
+    {
+        AnswerJudgment own = AnswerMatcher.GradeMeaning(typed, ExpectedPrimary, ExpectedAlternates);
+        if (own == AnswerJudgment.Correct) {
+            return own;
+        }
+
+        foreach (Homophone h in Homophones) {
+            if (AnswerMatcher.GradeMeaning(typed, h.PrimaryMeaning, h.AlternateMeanings) == AnswerJudgment.Correct) {
+                return AnswerJudgment.Correct;
+            }
+        }
+
+        return own;
+    }
 }
+
+/// <summary>Another word with the same reading, accepted in a listening question.</summary>
+public sealed record Homophone(string Japanese, string Reading, string PrimaryMeaning, string? AlternateMeanings);
 
 /// <summary>
 /// One study item being reviewed, with its set of questions and the live SRS

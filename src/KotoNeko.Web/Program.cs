@@ -28,6 +28,7 @@ builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddScoped<ReviewService>();
 builder.Services.AddScoped<DashboardService>();
+builder.Services.AddScoped<SettingsService>();
 
 string ttsApiKey = builder.Configuration["GoogleTtsApiKey"] ?? string.Empty;
 builder.Services.AddSingleton<JapaneseTtsService>(_ => new JapaneseTtsService(ttsApiKey));

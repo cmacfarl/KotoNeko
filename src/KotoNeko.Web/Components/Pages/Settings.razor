@@ -1,0 +1,98 @@
+@page "/settings"
+@inject SettingsService SettingsService
+
+<PageTitle>Settings · KotoNeko</PageTitle>
+
+<h1>Settings</h1>
+
+@if (_message is not null)
+{
+    <div class="kn-msg kn-msg-ok">@_message</div>
+}
+
+@if (_settings is null)
+{
+    <p class="kn-empty">Loading…</p>
+}
+else
+{
+    <div class="kn-panel">
+        <h2>Daily budget</h2>
+        <p class="kn-hint">Caps limit new work only. Reviews that are due always run: holding them back would build a backlog.</p>
+        <div class="kn-grid-2">
+            <div class="kn-form-row">
+                <label>Study minutes per day</label>
+                <input class="kn-input" type="number" min="5" max="600" @bind="_settings.DailyMinutesTarget" />
+            </div>
+            <div class="kn-form-row">
+                <label>New vocabulary lessons per day (0 pauses lessons)</label>
+                <input class="kn-input" type="number" min="0" max="500" @bind="_settings.DailyLessonCap" />
+            </div>
+            <div class="kn-form-row">
+                <label>Items per lesson session</label>
+                <input class="kn-input" type="number" min="1" max="50" @bind="_settings.LessonBatchSize" />
+            </div>
+        </div>
+    </div>
+
+    <div class="kn-panel">
+        <h2>Listening</h2>
+        <div class="kn-form-row">
+            <label style="display:flex;align-items:center;gap:0.4rem">
+                <input type="checkbox" @bind="_settings.ListeningEnabled" />
+                Ask a listening question in reviews (hear the word, type its meaning)
+            </label>
+        </div>
+        <div class="kn-form-row">
+            <label style="display:flex;align-items:center;gap:0.4rem">
+                <input type="checkbox" @bind="_settings.ListeningCountsTowardSrs" disabled="@(!_settings.ListeningEnabled)" />
+                Listening misses count toward the SRS stage
+            </label>
+            <p class="kn-hint">Off: listening misses are logged for your stats but never drop an item, like conjugation.</p>
+        </div>
+
+        <h2>Speech generation speed</h2>
+        <div class="kn-form-row">
+            <label>Default speed for new speech audio</label>
+            <select class="kn-select" @bind="_settings.SpeechSpeed">
+                @foreach (SpeechSpeed speed in Enum.GetValues<SpeechSpeed>())
+                {
+                    <option value="@speed">@speed.Label()</option>
+                }
+            </select>
+            <p class="kn-hint">Audio always plays at the speed it was generated at. You can pick a different speed each time you fetch speech on the vocabulary page.</p>
+        </div>
+    </div>
+
+    <div class="kn-toolbar">
+        <button class="kn-btn kn-btn-primary" @onclick="SaveAsync" disabled="@_saving">Save</button>
+    </div>
+}
+
+@code {
+    private StudySettings? _settings;
+    private string? _message;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await SettingsService.GetAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_settings is null) {
+            return;
+        }
+
+        _saving = true;
+        try {
+            await SettingsService.SaveAsync(_settings);
+            // Reload so the form shows any values that were clamped on save.
+            _settings = await SettingsService.GetAsync();
+            _message = "Settings saved.";
+        } finally {
+            _saving = false;
+        }
+    }
+}

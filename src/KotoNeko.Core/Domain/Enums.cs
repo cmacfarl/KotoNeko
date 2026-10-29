@@ -82,6 +82,38 @@ public enum QuestionType
     Conjugation = 2,
     /// <summary>English → Japanese: given the meanings, type the kana reading.</summary>
     Production = 3,
+    /// <summary>Audio → English: hear the word with no text shown, type its meaning.</summary>
+    Listening = 4,
+}
+
+/// <summary>
+/// The speaking rate speech audio is generated at. Clips always play back at the
+/// speed they were generated at; to hear a word faster, generate it faster.
+/// </summary>
+public enum SpeechSpeed
+{
+    /// <summary>0.8× natural speed.</summary>
+    Slow = 0,
+
+    /// <summary>Natural speed.</summary>
+    Normal = 1,
+
+    /// <summary>1.2× natural speed.</summary>
+    Fast = 2,
+}
+
+public static class SpeechSpeeds
+{
+    /// <summary>The TTS speaking rate for a speed.</summary>
+    public static double Rate(this SpeechSpeed speed) => speed switch
+    {
+        SpeechSpeed.Slow => 0.8,
+        SpeechSpeed.Fast => 1.2,
+        _ => 1.0,
+    };
+
+    /// <summary>A label for pickers, e.g. "Slow (0.8×)".</summary>
+    public static string Label(this SpeechSpeed speed) => $"{speed} ({speed.Rate():0.0}×)";
 }
 
 /// <summary>A loose categorisation for source materials, used only for display.</summary>

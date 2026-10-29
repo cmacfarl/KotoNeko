@@ -48,6 +48,20 @@ else
                 @if (q.Type == QuestionType.Production) {
                     <div class="kn-prompt-production-text">@q.Prompt</div>
                     <div class="kn-prompt-type"><span class="strong">Japanese reading</span></div>
+                } else if (q.Type == QuestionType.Listening) {
+                    // Nothing written is shown until the answer is in: the sound is the prompt.
+                    @if (_mode == Mode.AwaitingInput) {
+                        <button class="kn-listen-btn" title="Play again (Tab)" @onclick="ReplayAsync">🔊</button>
+                    } else {
+                        <div class="kn-prompt-word">
+                            @if (vocab.HasKanji) {
+                                <ruby>@vocab.Japanese<rt>@vocab.Reading</rt></ruby>
+                            } else {
+                                @vocab.Japanese
+                            }
+                        </div>
+                    }
+                    <div class="kn-prompt-type"><span class="strong">Listening</span> · what does it mean?</div>
                 } else {
                     <div class="kn-prompt-word">
                         @if (vocab.ShowsFurigana) {
@@ -70,6 +84,14 @@ else
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@_lastCorrectAnswer</span></div>
                     } else if (q.Type == QuestionType.Meaning) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@vocab.MeaningsDisplay</span></div>
+                    } else if (q.Type == QuestionType.Listening) {
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@vocab.MeaningsDisplay</span></div>
+                        @if (_heardHomophone is { } h) {
+                            <div class="kn-extra-row kn-homophone">
+                                Same sound: you heard <span class="kn-jp">@h.Japanese</span> (@h.PrimaryMeaning).
+                                This one was <span class="kn-jp">@vocab.Japanese</span>.
+                            </div>
+                        }
                     } else if (q.Type == QuestionType.Production) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">
                             @if (vocab.HasKanji) {
@@ -93,7 +115,7 @@ else
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
                     } else if (q.Type == QuestionType.Conjugation) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
-                    } else if (q.Type == QuestionType.Meaning) {
+                    } else if (q.Type is QuestionType.Meaning or QuestionType.Listening) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp"></span></div>
                     }
                 </div>
@@ -105,6 +127,7 @@ else
                    type="text"
                    value="@_input"
                    data-kn-convert="@(IsKana(q.Type) ? "true" : "false")"
+                   data-kn-replay="@(q.Type == QuestionType.Listening && _mode == Mode.AwaitingInput ? "true" : "false")"
                    placeholder="@Placeholder(q)"
                    autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                    readonly="@(_mode == Mode.ShowingResult)"
@@ -118,6 +141,10 @@ else
             @if (_mode == Mode.ShowingResult && q.Type == QuestionType.Conjugation)
             {
                 <button class="kn-conj-help-btn" @onclick="ToggleHelpPanel" title="Conjugation grammar help (?)">? Help</button>
+            }
+            @if (q.Type == QuestionType.Listening)
+            {
+                <span class="kn-hint">Tab plays it again</span>
             }
         </div>
 
@@ -166,6 +193,8 @@ else
     private DotNetObjectReference<SessionRunner>? _dotNetRef;
     private bool _kanaAttached;
     private string _lastTyped = string.Empty;
+    private bool _autoPlayQueued;
+    private Homophone? _heardHomophone;
 
     // Undo applies only to the answer whose result is on screen: not while its
     // audio is still playing, and not once the user has moved on (which commits it).
@@ -182,7 +211,30 @@ else
             _displayCard = Session.CurrentCard;
             _displayQuestion = Session.CurrentQuestion;
             _focusQueued = true;
+            QueueListeningAutoPlay();
         }
+    }
+
+    // A listening question starts by playing its word once it is on screen.
+    private void QueueListeningAutoPlay() =>
+        _autoPlayQueued = _displayQuestion?.Type == QuestionType.Listening;
+
+    [JSInvokable]
+    public Task OnReplayKey() => ReplayAsync();
+
+    private async Task ReplayAsync()
+    {
+        if (_mode != Mode.AwaitingInput || _displayQuestion?.Type != QuestionType.Listening
+            || _displayCard?.Item is not Vocabulary vocab) {
+            return;
+        }
+
+        try {
+            await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/word");
+        } catch {
+            Console.WriteLine("Failed to play listening audio for " + vocab.Reading);
+        }
+        _focusQueued = true;
     }
 
     // Called from JS (kotoneko.kanaInput) after it has converted + displayed the
@@ -272,26 +324,30 @@ else
         _closeHint = null;
         _lastJudgment = outcome.Judgment;
         _lastCorrectAnswer = outcome.CorrectAnswer;
+        _heardHomophone = outcome.Judgment == AnswerJudgment.Correct ? question.MatchedHomophone(answer) : null;
         _mode = Mode.PlayingAudio;
 
-        if (outcome.Judgment == AnswerJudgment.Correct && _displayCard?.Item is Vocabulary vocab) {
-        
+        // Listening answers replay the word either way: hearing it again while
+        // seeing it written is the point of the question.
+        bool playAudio = outcome.Judgment == AnswerJudgment.Correct || question.Type == QuestionType.Listening;
+        if (playAudio && _displayCard?.Item is Vocabulary vocab) {
+
             StateHasChanged();
             await Task.Yield();
-            
+
             try {
                 if (question.Type == QuestionType.Conjugation && question.ConjugationId is int conjId) {
-                    await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/conjugation/{conjId}/audio"); 
+                    await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/conjugation/{conjId}/audio");
                 } else if (vocab.HasWordAudio) {
                     Console.WriteLine("Starting word audio");
-                    await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/word"); 
+                    await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/word");
                     Console.WriteLine("Finished word audio");
                     if (vocab.HasSentenceAudio) {
                         await Task.Delay(800);
                         Console.WriteLine("Starting sentence audio");
-                        await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/sentence"); 
+                        await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/sentence");
                         Console.WriteLine("Finished sentence audio");
-                    } 
+                    }
                 }
             } catch {
                 Console.WriteLine("Failed to play audio for " + vocab.Reading);
@@ -314,7 +370,9 @@ else
         _focusQueued = true;
         _displayCard = Session?.CurrentCard;
         _displayQuestion = Session?.CurrentQuestion;
+        _heardHomophone = null;
         needsClear = true;
+        QueueListeningAutoPlay();
 
         // The next question renders as soon as this yields; the write happens behind it.
         if (results is { } r && (r.SrsItems.Count > 0 || r.Logs.Count > 0)) {
@@ -331,6 +389,7 @@ else
         _input = _lastTyped;
         _displayCard = Session.CurrentCard;
         _displayQuestion = Session.CurrentQuestion;
+        _heardHomophone = null;
         _mode = Mode.AwaitingInput;
         _closeHint = "Undone — fix your answer and submit again.";
         _focusQueued = true;
@@ -373,7 +432,7 @@ else
             _dotNetRef ??= DotNetObjectReference.Create(this);
             try {
                 await JS.InvokeVoidAsync("kotoneko.kanaInput.attach", _inputRef, _dotNetRef,
-                    new { interceptKeys = false });
+                    new { interceptKeys = false, replayKey = true });
                 _kanaAttached = true;
             } catch (JSException) {
                 // ignore; will retry on a later render
@@ -406,6 +465,12 @@ else
                 // ignore focus failures
             }
         }
+
+        // Not awaited: the user can start typing while the word plays.
+        if (_autoPlayQueued) {
+            _autoPlayQueued = false;
+            _ = ReplayAsync();
+        }
     }
 
     private static bool IsKana(QuestionType type) =>
@@ -417,6 +482,7 @@ else
         QuestionType.Reading    => "kn-prompt-reading",
         QuestionType.Production => "kn-prompt-production",
         QuestionType.Conjugation => "kn-prompt-conjugation",
+        QuestionType.Listening  => "kn-prompt-listening",
         _ => "kn-prompt-vocab",
     };
 
@@ -430,6 +496,7 @@ else
         QuestionType.Reading    => "Reading",
         QuestionType.Production => "Reading",
         QuestionType.Conjugation => "Conjugated form",
+        QuestionType.Listening  => "Meaning of what you heard",
         _ => "",
     };
 

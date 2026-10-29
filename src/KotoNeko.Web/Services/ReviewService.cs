@@ -6,6 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services;
 
+/// <summary>How many new lessons today's cap still allows.</summary>
+public sealed record LessonAllowance(int Cap, int DoneToday, int BatchSize)
+{
+    public int LeftToday => Math.Max(0, Cap - DoneToday);
+}
+
 /// <summary>
 /// Builds review and lesson sessions from the database and persists their results.
 /// </summary>
@@ -40,10 +46,29 @@ public class ReviewService
             .CountAsync();
     }
 
+    /// <summary>
+    /// Today's lesson cap and how much of it is used. A lesson counts on the
+    /// (local) day its item was unlocked.
+    /// </summary>
+    public async Task<LessonAllowance> GetLessonAllowanceAsync(DateTime now)
+    {
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        return await GetLessonAllowanceAsync(db, now);
+    }
+
+    internal static async Task<LessonAllowance> GetLessonAllowanceAsync(KotoNekoDbContext db, DateTime now)
+    {
+        StudySettings settings = await SettingsService.LoadAsync(db);
+        DateTime dayStart = SettingsService.StartOfLocalDay(now);
+        int doneToday = await db.SrsItems.CountAsync(s => s.UnlockedAt != null && s.UnlockedAt >= dayStart);
+        return new LessonAllowance(settings.DailyLessonCap, doneToday, settings.LessonBatchSize);
+    }
+
     /// <summary>Build a review session of all currently-due items (optionally capped).</summary>
     public async Task<ReviewSession?> BuildReviewSessionAsync(DateTime now, int? max = null)
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        StudySettings settings = await SettingsService.LoadAsync(db);
 
         IQueryable<Vocabulary> query = db.Vocabulary
             .Include(v => v.Srs)
@@ -66,14 +91,21 @@ public class ReviewService
             return null;
         }
 
-        List<ReviewCard> cards = items.Select(v => BuildCard(v, v.Srs!)).ToList();
-        return new ReviewSession(cards, SessionKind.Review, now, Random.Shared.Next());
+        ILookup<string, Vocabulary> byReading = settings.ListeningEnabled
+            ? await LoadHomophonesAsync(db, items)
+            : NoHomophones;
+
+        List<ReviewCard> cards = items
+            .Select(v => BuildCard(v, v.Srs!, SessionKind.Review, settings, byReading))
+            .ToList();
+        return new ReviewSession(cards, SessionKind.Review, now, Random.Shared.Next(), PracticeOnlyTypes(settings));
     }
 
     /// <summary>Build a lesson session of not-yet-learned items (optionally capped).</summary>
     public async Task<ReviewSession?> BuildLessonSessionAsync(DateTime now, int? max = null)
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        StudySettings settings = await SettingsService.LoadAsync(db);
 
         IQueryable<Vocabulary> query = db.Vocabulary
             .Include(v => v.Srs)
@@ -93,14 +125,14 @@ public class ReviewService
 
         List<ReviewCard> cards = items.Select(v => {
             SrsItem srs = v.Srs ?? new SrsItem { StudyItemId = v.Id, Stage = SrsStage.Locked };
-            return BuildCard(v, srs);
+            return BuildCard(v, srs, SessionKind.Lesson, settings, NoHomophones);
         }).ToList();
 
-        return new ReviewSession(cards, SessionKind.Lesson, now, Random.Shared.Next());
+        return new ReviewSession(cards, SessionKind.Lesson, now, Random.Shared.Next(), PracticeOnlyTypes(settings));
     }
 
     /// <summary>Persist the SRS changes and review logs accumulated by a session.</summary>
-    public async Task PersistAsync(ReviewSession.PendingResults results) 
+    public async Task PersistAsync(ReviewSession.PendingResults results)
     {
         if (results.SrsItems.Count == 0 && results.Logs.Count == 0) {
             return;
@@ -121,7 +153,37 @@ public class ReviewService
         await db.SaveChangesAsync();
     }
 
-    private static ReviewCard BuildCard(Vocabulary v, SrsItem srs)
+    private static readonly ILookup<string, Vocabulary> NoHomophones =
+        Array.Empty<Vocabulary>().ToLookup(v => v.Reading);
+
+    private static IReadOnlySet<QuestionType> PracticeOnlyTypes(StudySettings settings)
+    {
+        HashSet<QuestionType> types = new(ReviewSession.DefaultPracticeOnlyTypes);
+        if (!settings.ListeningCountsTowardSrs) {
+            types.Add(QuestionType.Listening);
+        }
+        return types;
+    }
+
+    /// <summary>
+    /// Every word sharing a reading with an item that will get a listening
+    /// question, keyed by reading. Loaded untracked so it never collides with the
+    /// session's tracked items.
+    /// </summary>
+    private static async Task<ILookup<string, Vocabulary>> LoadHomophonesAsync(
+        KotoNekoDbContext db, List<Vocabulary> items)
+    {
+        List<string> readings = items.Where(v => v.HasWordAudio).Select(v => v.Reading).Distinct().ToList();
+        List<Vocabulary> sameSound = await db.Vocabulary
+            .AsNoTracking()
+            .Include(v => v.Meanings)
+            .Where(v => readings.Contains(v.Reading))
+            .ToListAsync();
+        return sameSound.ToLookup(v => v.Reading);
+    }
+
+    private static ReviewCard BuildCard(
+        Vocabulary v, SrsItem srs, SessionKind kind, StudySettings settings, ILookup<string, Vocabulary> byReading)
     {
         // Any one of the stored meanings is accepted: the first is the primary,
         // the rest become accepted alternates for the grader.
@@ -169,10 +231,34 @@ public class ReviewService
             });
         }
 
+        // Hear the word, type its meaning. Reviews only: a lesson has just shown it.
+        if (kind == SessionKind.Review && settings.ListeningEnabled && v.HasWordAudio) {
+            questions.Add(new ReviewQuestion() {
+                Type = QuestionType.Listening,
+                Prompt = "Listening",
+                ExpectedPrimary = primaryMeaning,
+                ExpectedAlternates = alternateMeanings,
+                Homophones = byReading[v.Reading]
+                    .Where(h => h.Id != v.Id)
+                    .Select(ToHomophone)
+                    .ToList(),
+            });
+        }
+
         return new ReviewCard() {
             Item = v,
             Srs = srs,
             Questions = questions,
         };
+    }
+
+    private static Homophone ToHomophone(Vocabulary h)
+    {
+        List<string> meanings = h.Meanings.OrderBy(m => m.SortOrder).Select(m => m.Text).ToList();
+        return new Homophone(
+            h.Japanese,
+            h.Reading,
+            meanings.Count > 0 ? meanings[0] : string.Empty,
+            meanings.Count > 1 ? string.Join(';', meanings.Skip(1)) : null);
     }
 }

@@ -258,6 +258,84 @@ public class ReviewSessionTests
         Assert.Equal(SrsStage.Apprentice3, storedStages[3]);
     }
 
+    [Fact]
+    public void Listening_Miss_Is_Practice_Only_By_Default()
+    {
+        ReviewCard card = Card(1, SrsStage.Apprentice2, Meaning("newspaper"), Listening("newspaper"));
+        ReviewSession session = new(new[] { card }, SessionKind.Review, Now, Seed, ListeningPracticeOnly);
+
+        MissListeningOnceThenAnswerAll(session);
+
+        Assert.Equal(SrsStage.Apprentice3, card.Srs.Stage);
+        Assert.Equal(1, session.CorrectCount);
+        ReviewLog log = session.CommitPendingResults().Logs.Single(l => l.QuestionType == QuestionType.Listening);
+        Assert.False(log.WasCorrect);
+    }
+
+    [Fact]
+    public void Listening_Miss_Counts_When_Configured()
+    {
+        ReviewCard card = Card(1, SrsStage.Guru1, Meaning("newspaper"), Listening("newspaper"));
+        ReviewSession session = Review(card);
+
+        MissListeningOnceThenAnswerAll(session);
+
+        // One miss at Guru: two stages down.
+        Assert.Equal(SrsStage.Apprentice3, card.Srs.Stage);
+        Assert.Equal(1, session.IncorrectCount);
+    }
+
+    [Fact]
+    public void Listening_Is_Asked_Before_The_Rest_Of_Its_Card()
+    {
+        // Across many shuffles, no card may show its word (or meanings) before
+        // its listening question has been asked.
+        for (int seed = 0; seed < 200; seed++)
+        {
+            ReviewCard[] cards =
+            {
+                Card(1, SrsStage.Apprentice2, Meaning("newspaper"), Reading("しんぶん"), Listening("newspaper")),
+                Card(2, SrsStage.Apprentice2, Meaning("dog"), Listening("dog"), Reading("いぬ")),
+                Card(3, SrsStage.Apprentice2, Listening("cat"), Meaning("cat")),
+            };
+            ReviewSession session = new(cards, SessionKind.Review, Now, seed);
+
+            HashSet<int> seen = new();
+            while (!session.IsComplete)
+            {
+                ReviewCard card = session.CurrentCard!;
+                ReviewQuestion q = session.CurrentQuestion!;
+                if (seen.Add(card.Item.Id))
+                {
+                    Assert.Equal(QuestionType.Listening, q.Type);
+                }
+                session.Submit(q.ExpectedPrimary);
+            }
+        }
+    }
+
+    private static readonly IReadOnlySet<QuestionType> ListeningPracticeOnly =
+        new HashSet<QuestionType> { QuestionType.Conjugation, QuestionType.Listening };
+
+    private static void MissListeningOnceThenAnswerAll(ReviewSession session)
+    {
+        bool missed = false;
+        while (!session.IsComplete)
+        {
+            ReviewQuestion q = session.CurrentQuestion!;
+            if (q.Type == QuestionType.Listening && !missed)
+            {
+                session.Submit(Wrong(q));
+                missed = true;
+            }
+            else
+            {
+                session.Submit(q.ExpectedPrimary);
+            }
+        }
+        Assert.True(missed);
+    }
+
     private static ReviewSession Review(params ReviewCard[] cards) =>
         new(cards, SessionKind.Review, Now, Seed);
 
@@ -291,11 +369,21 @@ public class ReviewSessionTests
         Polarity = Polarity.Affirmative,
     };
 
+    private static ReviewQuestion Listening(string expected) => new()
+    {
+        Type = QuestionType.Listening,
+        Prompt = "Listening",
+        ExpectedPrimary = expected,
+    };
+
+    private static bool IsEnglish(ReviewQuestion q) =>
+        q.Type is QuestionType.Meaning or QuestionType.Listening;
+
     private static string Wrong(ReviewQuestion q) =>
-        q.Type == QuestionType.Meaning ? "qqqqqqqqqqqqqq" : "ぬぬぬぬぬ";
+        IsEnglish(q) ? "qqqqqqqqqqqqqq" : "ぬぬぬぬぬ";
 
     private static string Close(ReviewQuestion q) =>
-        q.Type == QuestionType.Meaning ? "   " : "x";
+        IsEnglish(q) ? "   " : "x";
 
     private static void AnswerAllCorrectly(ReviewSession session)
     {

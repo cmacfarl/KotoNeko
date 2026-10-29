@@ -20,9 +20,15 @@ else if (_summary is null)
 else
 {
     <div class="kn-cta-row">
-        <a class="kn-cta kn-cta-lessons @(_summary.LessonsAvailable == 0 ? "kn-cta-disabled" : "")" href="/lessons">
-            <div class="kn-cta-count">@_summary.LessonsAvailable</div>
-            <div class="kn-cta-label">Lessons</div>
+        <a class="kn-cta kn-cta-lessons @(_summary.LessonsOpenNow == 0 ? "kn-cta-disabled" : "")" href="/lessons">
+            <div class="kn-cta-count">@_summary.LessonsOpenNow</div>
+            <div class="kn-cta-label">
+                Lessons
+                @if (_summary.LessonsAvailable > _summary.LessonsOpenNow)
+                {
+                    <span>· daily cap (@_summary.LessonsAvailable waiting)</span>
+                }
+            </div>
         </a>
         <a class="kn-cta kn-cta-reviews @(_summary.DueNow == 0 ? "kn-cta-disabled" : "")" href="/reviews">
             <div class="kn-cta-count">@_summary.DueNow</div>
@@ -54,6 +60,41 @@ else
                 <div class="kn-band-name">Burned</div>
             </div>
         </div>
+    </div>
+
+    <div class="kn-panel">
+        <h2>Listening</h2>
+        <div class="kn-accuracy-row">
+            <div class="kn-accuracy kn-accuracy-ear">
+                <div class="kn-accuracy-value">@Percent(_summary.ByEar)</div>
+                <div class="kn-accuracy-name">By ear</div>
+            </div>
+            <div class="kn-accuracy kn-accuracy-sight">
+                <div class="kn-accuracy-value">@Percent(_summary.BySight)</div>
+                <div class="kn-accuracy-name">By sight</div>
+            </div>
+        </div>
+        <p class="kn-hint">Accuracy over the last 30 days. By ear is the listening question; by sight is meaning, reading and production.</p>
+
+        <h3 class="kn-subhead">Known by sight, not yet by ear</h3>
+        @if (_summary.EarGaps.Count == 0)
+        {
+            <p class="kn-empty">No gaps yet. Words you read well but miss by ear will show up here.</p>
+        }
+        else
+        {
+            <ul class="kn-missed-list">
+                @foreach (EarGapItem item in _summary.EarGaps)
+                {
+                    <li class="kn-missed-item">
+                        <span class="kn-missed-jp kn-jp">@item.Japanese</span>
+                        <span class="kn-missed-reading">@item.Reading</span>
+                        <span class="kn-missed-meaning">@item.Meaning</span>
+                        <span class="kn-missed-tag">sight @item.SightPercent% · ear @item.EarPercent%</span>
+                    </li>
+                }
+            </ul>
+        }
     </div>
 
     <div class="kn-panel">
@@ -111,6 +152,8 @@ else
 @code {
     private DashboardSummary? _summary;
     private string? _dbError;
+
+    private static string Percent(Accuracy a) => a.Percent is int p ? $"{p}%" : "—";
 
     protected override async Task OnInitializedAsync()
     {

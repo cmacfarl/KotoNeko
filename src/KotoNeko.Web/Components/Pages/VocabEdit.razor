@@ -4,6 +4,7 @@
 @inject SourceService SourceService
 @inject KotoNeko.Jisho.JishoClient Jisho
 @inject JapaneseTtsService TtsService
+@inject SettingsService SettingsService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -170,11 +171,19 @@
             }
             @if (!HasAllAudio)
             {
-                <button class="kn-btn" type="button" @onclick="FetchAudioAsync"
-                        disabled="@(fetchingAudio || _busy || string.IsNullOrWhiteSpace(vocab.Japanese))">
-                    @(fetchingAudio ? "Fetching…" : "⤓ Fetch Speech")
-                </button>
-                <div class="kn-hint">Fetches missing TTS audio.</div>
+                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+                    <button class="kn-btn" type="button" @onclick="FetchAudioAsync"
+                            disabled="@(fetchingAudio || _busy || string.IsNullOrWhiteSpace(vocab.Japanese))">
+                        @(fetchingAudio ? "Fetching…" : "⤓ Fetch Speech")
+                    </button>
+                    <select class="kn-select" style="width:auto" @bind="speechSpeed" disabled="@fetchingAudio" title="Speed to generate at">
+                        @foreach (SpeechSpeed speed in Enum.GetValues<SpeechSpeed>())
+                        {
+                            <option value="@speed">@speed.Label()</option>
+                        }
+                    </select>
+                </div>
+                <div class="kn-hint">Fetches missing TTS audio at the chosen speed. Clips always play at the speed they were generated at.</div>
             }
         </div>
 
@@ -249,6 +258,7 @@
     private bool audioChanged;
     private bool fetchingAudio;
     private string? audioError;
+    private SpeechSpeed speechSpeed = SpeechSpeed.Slow;
 
     private bool HasAllAudio =>
         (vocab.HasWordAudio || pendingWordAudio is not null)
@@ -271,6 +281,7 @@
     protected override async Task OnParametersSetAsync()
     {
         sources = await SourceService.GetAllAsync();
+        speechSpeed = (await SettingsService.GetAsync()).SpeechSpeed;
 
         // Reset transient UI state in case the component instance is reused
         // across an edit -> new navigation.
@@ -472,7 +483,7 @@
         try {
             if (!vocab.HasWordAudio && pendingWordAudio is null) {
                 try {
-                    pendingWordAudio = (await TtsService.SynthesiseAsync(vocab.Japanese)).Audio;
+                    pendingWordAudio = (await TtsService.SynthesiseAsync(vocab.Japanese, speechSpeed)).Audio;
                     anyFetched = true;
                 } catch (Exception ex) { 
                     errors.Add($"Word: {ex.Message}"); 
@@ -481,7 +492,7 @@
 
             if (!string.IsNullOrWhiteSpace(vocab.ContextSentence) && !vocab.HasSentenceAudio && pendingSentenceAudio is null) {
                 try {
-                    pendingSentenceAudio = (await TtsService.SynthesiseAsync(vocab.ContextSentence)).Audio;
+                    pendingSentenceAudio = (await TtsService.SynthesiseAsync(vocab.ContextSentence, speechSpeed)).Audio;
                     anyFetched = true;
                 } catch (Exception ex) { 
                     errors.Add($"Sentence: {ex.Message}"); 
@@ -493,7 +504,7 @@
                     if (c.HasAudio || pendingConjugationAudio.ContainsKey((c.Form, c.Polarity)) || string.IsNullOrWhiteSpace(c.Kana))
                         continue;
                     try {
-                        pendingConjugationAudio[(c.Form, c.Polarity)] = (await TtsService.SynthesiseAsync(c.Kana)).Audio;
+                        pendingConjugationAudio[(c.Form, c.Polarity)] = (await TtsService.SynthesiseAsync(c.Kana, speechSpeed)).Audio;
                         anyFetched = true;
                     } catch (Exception ex) { 
                         errors.Add($"{ConjugationLabels.Describe(c.Form, c.Polarity)}: {ex.Message}"); 

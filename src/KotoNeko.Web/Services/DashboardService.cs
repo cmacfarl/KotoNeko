@@ -11,11 +11,35 @@ public record MissedItem(int VocabularyId, string Japanese, string Reading, stri
 /// <summary>An upcoming review session: a batch of items that become due at the same time.</summary>
 public record UpcomingSession(DateTime AvailableAt, int Count);
 
+/// <summary>A word answered better by sight (meaning/reading) than by ear (listening).</summary>
+public record EarGapItem(int VocabularyId, string Japanese, string Reading, string Meaning, int SightPercent, int EarPercent);
+
+/// <summary>Correct answers out of total, as a whole percentage (null when nothing was answered).</summary>
+public record Accuracy(int Correct, int Total)
+{
+    public int? Percent => Total == 0 ? null : (int)Math.Round(100.0 * Correct / Total);
+}
+
 /// <summary>Aggregated data for the home dashboard.</summary>
 public class DashboardSummary
 {
     public int DueNow { get; init; }
     public int LessonsAvailable { get; init; }
+
+    /// <summary>Lessons the daily cap still allows today.</summary>
+    public int LessonsLeftToday { get; init; }
+
+    /// <summary>Lessons that can be started now: available, within today's cap.</summary>
+    public int LessonsOpenNow => Math.Min(LessonsAvailable, LessonsLeftToday);
+
+    /// <summary>Recent accuracy hearing words (listening questions).</summary>
+    public Accuracy ByEar { get; init; } = new(0, 0);
+
+    /// <summary>Recent accuracy on meaning, reading and production questions.</summary>
+    public Accuracy BySight { get; init; } = new(0, 0);
+
+    /// <summary>Words known by sight but not yet by ear, biggest gap first.</summary>
+    public List<EarGapItem> EarGaps { get; init; } = new();
     public int TotalItems { get; init; }
     public int AsleepItems { get; init; }
 
@@ -110,10 +134,21 @@ public class DashboardService
             .Select(g => new UpcomingSession(DateTime.SpecifyKind(g.Key, DateTimeKind.Utc), g.Count()))
             .ToList();
 
+        LessonAllowance allowance = await ReviewService.GetLessonAllowanceAsync(db, now);
+
+        DateTime accuracySince = now - AccuracyWindow;
+        Accuracy byEar = await AccuracyAsync(db, accuracySince, ListeningTypes);
+        Accuracy bySight = await AccuracyAsync(db, accuracySince, SightTypes);
+        List<EarGapItem> earGaps = await EarGapsAsync(db, now - EarGapWindow);
+
         return new DashboardSummary
         {
             DueNow = due,
             LessonsAvailable = lessons,
+            LessonsLeftToday = allowance.LeftToday,
+            ByEar = byEar,
+            BySight = bySight,
+            EarGaps = earGaps,
             TotalItems = total,
             AsleepItems = asleep,
             BandCounts = bands,
@@ -124,6 +159,83 @@ public class DashboardService
 
     /// <summary>How many upcoming review sessions to surface on the dashboard.</summary>
     private const int UpcomingSessionCount = 8;
+
+    /// <summary>How far back the by-ear and by-sight accuracy tiles look.</summary>
+    private static readonly TimeSpan AccuracyWindow = TimeSpan.FromDays(30);
+
+    /// <summary>How far back the sight-versus-sound comparison looks.</summary>
+    private static readonly TimeSpan EarGapWindow = TimeSpan.FromDays(90);
+
+    private const int EarGapCount = 12;
+
+    private static readonly QuestionType[] ListeningTypes = { QuestionType.Listening };
+
+    /// <summary>Questions answered from the written word or its meaning.</summary>
+    private static readonly QuestionType[] SightTypes =
+        { QuestionType.Meaning, QuestionType.Reading, QuestionType.Production };
+
+    private static async Task<Accuracy> AccuracyAsync(KotoNekoDbContext db, DateTime since, QuestionType[] types)
+    {
+        IQueryable<ReviewLog> logs = db.ReviewLogs
+            .Where(r => r.ReviewedAt >= since && types.Contains(r.QuestionType));
+        int total = await logs.CountAsync();
+        int correct = total == 0 ? 0 : await logs.CountAsync(r => r.WasCorrect);
+        return new Accuracy(correct, total);
+    }
+
+    /// <summary>
+    /// Words with at least one recent listening miss whose by-sight accuracy is
+    /// higher than their by-ear accuracy, sorted by the size of that gap.
+    /// </summary>
+    private static async Task<List<EarGapItem>> EarGapsAsync(KotoNekoDbContext db, DateTime since)
+    {
+        var perItem = await db.ReviewLogs
+            .Where(r => r.ReviewedAt >= since && r.StudyItem is Vocabulary)
+            .GroupBy(r => r.StudyItemId)
+            .Select(g => new {
+                Id = g.Key,
+                EarTotal = g.Count(r => r.QuestionType == QuestionType.Listening),
+                EarCorrect = g.Count(r => r.QuestionType == QuestionType.Listening && r.WasCorrect),
+                SightTotal = g.Count(r => r.QuestionType == QuestionType.Meaning
+                    || r.QuestionType == QuestionType.Reading
+                    || r.QuestionType == QuestionType.Production),
+                SightCorrect = g.Count(r => (r.QuestionType == QuestionType.Meaning
+                    || r.QuestionType == QuestionType.Reading
+                    || r.QuestionType == QuestionType.Production) && r.WasCorrect),
+            })
+            .ToListAsync();
+
+        var gaps = perItem
+            .Where(s => s.EarTotal > 0 && s.EarCorrect < s.EarTotal && s.SightTotal > 0)
+            .Select(s => new {
+                s.Id,
+                Sight = new Accuracy(s.SightCorrect, s.SightTotal).Percent!.Value,
+                Ear = new Accuracy(s.EarCorrect, s.EarTotal).Percent!.Value,
+            })
+            .Where(s => s.Sight > s.Ear)
+            .OrderByDescending(s => s.Sight - s.Ear)
+            .Take(EarGapCount)
+            .ToList();
+
+        if (gaps.Count == 0) {
+            return new List<EarGapItem>();
+        }
+
+        List<int> ids = gaps.Select(g => g.Id).ToList();
+        Dictionary<int, Vocabulary> words = await db.Vocabulary
+            .AsNoTracking()
+            .Include(v => v.Meanings)
+            .Where(v => ids.Contains(v.Id))
+            .ToDictionaryAsync(v => v.Id);
+
+        return gaps
+            .Where(g => words.ContainsKey(g.Id))
+            .Select(g => {
+                Vocabulary v = words[g.Id];
+                return new EarGapItem(v.Id, v.Japanese, v.Reading, v.PrimaryMeaning, g.Sight, g.Ear);
+            })
+            .ToList();
+    }
 
     private readonly record struct StageCount(SrsStage Stage, int Count);
 }

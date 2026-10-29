@@ -1,6 +1,7 @@
 
 using System.Text;
 using System.Text.Json;
+using KotoNeko.Core.Domain;
 
 namespace KotoNeko.Web.Services;
 
@@ -57,7 +58,11 @@ public sealed class JapaneseTtsService : IDisposable
         _http    = httpClient ?? new HttpClient();
     }
 
-    public async Task<TtsResult> SynthesiseAsync(string text, bool advanceVoice = true) {
+    /// <param name="speed">
+    /// The speaking rate to generate at. Clips are always played back at the
+    /// speed they were generated at.
+    /// </param>
+    public async Task<TtsResult> SynthesiseAsync(string text, SpeechSpeed speed, bool advanceVoice = true) {
         if (string.IsNullOrWhiteSpace(_apiKey))
             throw new InvalidOperationException("Google TTS API key is not configured. Set GoogleTtsApiKey in appsettings.json.");
 
@@ -69,7 +74,7 @@ public sealed class JapaneseTtsService : IDisposable
             _voiceIndex++;
         }
 
-        string base64 = await CallGoogleTtsAsync(text, voice).ConfigureAwait(false);
+        string base64 = await CallGoogleTtsAsync(text, voice, speed.Rate()).ConfigureAwait(false);
         byte[] textAudio = Base64ToM4a(base64);
 
         return new TtsResult {
@@ -80,7 +85,7 @@ public sealed class JapaneseTtsService : IDisposable
 
     public string PeekNextVoice() => _voices[_voiceIndex % _voices.Length];
 
-    private async Task<string> CallGoogleTtsAsync(string sentence, string voice)
+    private async Task<string> CallGoogleTtsAsync(string sentence, string voice, double speakingRate)
     {
         var requestBody = new {
             input = new { text = sentence },
@@ -90,8 +95,7 @@ public sealed class JapaneseTtsService : IDisposable
             },
             audioConfig = new {
                 audioEncoding = "MP3",
-                speakingRate = "0.8",
-                
+                speakingRate,
             },
         };
 

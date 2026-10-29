@@ -209,6 +209,40 @@ h1, h2, h3 {
 .kn-band-enlightened { background: var(--kn-enlightened); }
 .kn-band-burned { background: var(--kn-burned); }
 
+/* Listening: by-ear vs by-sight accuracy */
+.kn-accuracy-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.kn-accuracy {
+    border-radius: 6px;
+    padding: 1rem 0.5rem;
+    color: #fff;
+    text-align: center;
+}
+
+.kn-accuracy .kn-accuracy-value {
+    font-size: 1.9rem;
+    font-weight: 700;
+}
+
+.kn-accuracy .kn-accuracy-name {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.95;
+}
+
+.kn-accuracy-ear { background: var(--kn-enlightened); }
+.kn-accuracy-sight { background: var(--kn-guru); }
+
+.kn-subhead {
+    font-size: 1rem;
+    margin: 1.25rem 0 0.5rem;
+}
+
 /* Recently missed */
 .kn-missed-list {
     list-style: none;
@@ -359,6 +393,25 @@ h1, h2, h3 {
 .kn-prompt-production { background: var(--kn-burned); }
 .kn-prompt-meaning { background: var(--kn-guru); }
 .kn-prompt-conjugation { background: var(--kn-guru); }
+.kn-prompt-listening { background: var(--kn-enlightened); }
+
+/* The speaker in a listening question: the sound is the prompt. */
+.kn-listen-btn {
+    font-size: 4rem;
+    line-height: 1;
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    width: 8rem;
+    height: 8rem;
+    align-self: center;
+    margin-bottom: 0.75rem;
+    cursor: pointer;
+}
+
+.kn-listen-btn:hover { background: rgba(255, 255, 255, 0.25); }
+
+.kn-homophone { font-size: 0.95rem; opacity: 0.9; }
 
 .kn-prompt-word {
     font-size: 4.5rem;

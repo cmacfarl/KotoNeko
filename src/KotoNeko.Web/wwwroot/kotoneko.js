@@ -203,6 +203,9 @@ window.kotoneko = window.kotoneko || {};
     //   options.interceptKeys  - if true, swallow Tab/Enter and forward them to
     //                            the component via OnInterceptKey(key) instead of
     //                            letting them move focus / submit.
+    //   options.replayKey      - if true, Tab is swallowed and forwarded to the
+    //                            component via OnReplayKey() whenever the element
+    //                            carries data-kn-replay="true" (listening questions).
     // The element may carry data-kn-convert="false" to disable conversion
     // dynamically (used by the quiz, where some questions are English).
     // ---------------------------------------------------------------------
@@ -213,6 +216,7 @@ window.kotoneko = window.kotoneko || {};
             }
             options = options || {};
             const interceptKeys = !!options.interceptKeys;
+            const replayKey = !!options.replayKey;
 
             const onInput = function () {
                 const raw = element.value;
@@ -229,9 +233,14 @@ window.kotoneko = window.kotoneko || {};
             element.addEventListener("input", onInput);
 
             let onKeyDown = null;
-            if (interceptKeys) {
+            if (interceptKeys || replayKey) {
                 onKeyDown = function (e) {
-                    if (e.key === "Tab" || e.key === "Enter") {
+                    if (replayKey && e.key === "Tab" && element.dataset.knReplay === "true") {
+                        e.preventDefault();
+                        dotNetRef.invokeMethodAsync("OnReplayKey");
+                        return;
+                    }
+                    if (interceptKeys && (e.key === "Tab" || e.key === "Enter")) {
                         e.preventDefault();
                         dotNetRef.invokeMethodAsync("OnInterceptKey", e.key);
                     }
@@ -263,13 +272,15 @@ window.kotoneko = window.kotoneko || {};
         }
     };
 
-    // Play audio from a URL (used for review autoplay).
+    // Play audio from a URL (used for review autoplay), always at the speed it
+    // was generated at. Resolves when the clip ends; rejects if it cannot load or
+    // play, so callers never wait forever (e.g. when the browser blocks autoplay).
     k.playAudio = function (url) {
         return new Promise((resolve, reject) => {
             const audio = new Audio(url);
             audio.addEventListener('ended', () => resolve());
             audio.addEventListener('error', (e) => reject(e));
-            audio.play().catch(function (reject) {});
+            audio.play().catch(reject);
         });
     };
 
