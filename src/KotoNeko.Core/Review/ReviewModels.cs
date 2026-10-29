@@ -102,6 +102,12 @@ public class ReviewCard
 
     public required List<ReviewQuestion> Questions { get; init; }
 
+    /// <summary>
+    /// The item's context sentence with furigana only where the reader still needs
+    /// it, when readings for it are stored; null to show the sentence as plain text.
+    /// </summary>
+    public IReadOnlyList<FuriganaPiece>? ContextSentence { get; init; }
+
     /// <summary>Total incorrect answers across this card (drives the SRS penalty).</summary>
     public int IncorrectCount { get; set; }
 

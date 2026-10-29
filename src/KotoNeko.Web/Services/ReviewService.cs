@@ -1,6 +1,7 @@
 using KotoNeko.Core.Conjugation;
 using KotoNeko.Core.Domain;
 using KotoNeko.Core.Review;
+using KotoNeko.Core.Text;
 using KotoNeko.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,10 +19,12 @@ public sealed record LessonAllowance(int Cap, int DoneToday, int BatchSize)
 public class ReviewService
 {
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
+    private readonly SentenceReadingService _readings;
 
-    public ReviewService(IDbContextFactory<KotoNekoDbContext> factory)
+    public ReviewService(IDbContextFactory<KotoNekoDbContext> factory, SentenceReadingService readings)
     {
         _factory = factory;
+        _readings = readings;
     }
 
     /// <summary>Count of items currently due for review.</summary>
@@ -95,8 +98,9 @@ public class ReviewService
             ? await LoadHomophonesAsync(db, items)
             : NoHomophones;
 
+        Func<Vocabulary, IReadOnlyList<FuriganaPiece>?> sentences = await ContextSentencesAsync(items);
         List<ReviewCard> cards = items
-            .Select(v => BuildCard(v, v.Srs!, SessionKind.Review, settings, byReading))
+            .Select(v => BuildCard(v, v.Srs!, SessionKind.Review, settings, byReading, sentences(v)))
             .ToList();
         return new ReviewSession(cards, SessionKind.Review, now, Random.Shared.Next(), PracticeOnlyTypes(settings));
     }
@@ -123,9 +127,10 @@ public class ReviewService
             return null;
         }
 
+        Func<Vocabulary, IReadOnlyList<FuriganaPiece>?> sentences = await ContextSentencesAsync(items);
         List<ReviewCard> cards = items.Select(v => {
             SrsItem srs = v.Srs ?? new SrsItem { StudyItemId = v.Id, Stage = SrsStage.Locked };
-            return BuildCard(v, srs, SessionKind.Lesson, settings, NoHomophones);
+            return BuildCard(v, srs, SessionKind.Lesson, settings, NoHomophones, sentences(v));
         }).ToList();
 
         return new ReviewSession(cards, SessionKind.Lesson, now, Random.Shared.Next(), PracticeOnlyTypes(settings));
@@ -182,8 +187,31 @@ public class ReviewService
         return sameSound.ToLookup(v => v.Reading);
     }
 
+    /// <summary>
+    /// Stored readings for the items' context sentences, with furigana only over
+    /// words the user doesn't know yet. Only reads what is stored: sentences
+    /// without readings yet are shown plain rather than holding up the session.
+    /// </summary>
+    private async Task<Func<Vocabulary, IReadOnlyList<FuriganaPiece>?>> ContextSentencesAsync(List<Vocabulary> items)
+    {
+        List<string> texts = items
+            .Where(v => !string.IsNullOrWhiteSpace(v.ContextSentence))
+            .Select(v => v.ContextSentence!)
+            .ToList();
+        if (texts.Count == 0) {
+            return _ => null;
+        }
+
+        Dictionary<string, SentenceView> views = await _readings.GetManyAsync(texts);
+        HashSet<string> known = await _readings.KnownWordsAsync();
+        return v => v.ContextSentence is string text && views.TryGetValue(text, out SentenceView? view)
+            ? view.ForReader(known)
+            : null;
+    }
+
     private static ReviewCard BuildCard(
-        Vocabulary v, SrsItem srs, SessionKind kind, StudySettings settings, ILookup<string, Vocabulary> byReading)
+        Vocabulary v, SrsItem srs, SessionKind kind, StudySettings settings, ILookup<string, Vocabulary> byReading,
+        IReadOnlyList<FuriganaPiece>? contextSentence)
     {
         // Any one of the stored meanings is accepted: the first is the primary,
         // the rest become accepted alternates for the grader.
@@ -249,6 +277,7 @@ public class ReviewService
             Item = v,
             Srs = srs,
             Questions = questions,
+            ContextSentence = contextSentence,
         };
     }
 

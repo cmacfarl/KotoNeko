@@ -5,6 +5,7 @@
 @inject KotoNeko.Jisho.JishoClient Jisho
 @inject JapaneseTtsService TtsService
 @inject SettingsService SettingsService
+@inject SentenceReadingService Readings
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -104,6 +105,38 @@
         <div class="kn-form-row">
             <label>Context sentence (optional)</label>
             <textarea class="kn-textarea kn-jp" @bind="vocab.ContextSentence"></textarea>
+            @if (_sentence is not null && _sentence.Text == vocab.ContextSentence?.Trim())
+            {
+                <div class="kn-readings">
+                    <span class="kn-hint">Readings@(_sentence.IsEdited ? " (corrected)" : ""):</span>
+                    <FuriganaText Pieces="_sentence.Pieces" />
+                    @if (!_editingReadings)
+                    {
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="StartEditingReadings">Fix readings</button>
+                    }
+                </div>
+                @if (_editingReadings)
+                {
+                    <input class="kn-input kn-jp" @bind="_readingsText" />
+                    <div class="kn-hint">
+                        A reading goes in [ ] right after its kanji: 毎朝[まいあさ]新聞[しんぶん]を読[よ]みます.
+                        For a base that mixes kanji and kana, use braces: {持って来}[もってく]る.
+                    </div>
+                    @if (_readingsError is not null)
+                    {
+                        <div class="kn-hint" style="color:var(--kn-incorrect-dark)">@_readingsError</div>
+                    }
+                    <div class="kn-toolbar">
+                        <button class="kn-btn kn-btn-sm kn-btn-primary" type="button" @onclick="SaveReadingsAsync">Save readings</button>
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="ResetReadingsAsync">Regenerate</button>
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="() => _editingReadings = false">Cancel</button>
+                    </div>
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(vocab.ContextSentence) && Id is not null)
+            {
+                <div class="kn-hint">Readings appear here once the sentence is saved and a dictionary is imported.</div>
+            }
         </div>
 
         <div class="kn-form-row">
@@ -260,6 +293,12 @@
     private string? audioError;
     private SpeechSpeed speechSpeed = SpeechSpeed.Slow;
 
+    // The context sentence's stored readings, and the bracket-format editor for them.
+    private SentenceView? _sentence;
+    private bool _editingReadings;
+    private string _readingsText = string.Empty;
+    private string? _readingsError;
+
     private bool HasAllAudio =>
         (vocab.HasWordAudio || pendingWordAudio is not null)
         && (string.IsNullOrWhiteSpace(vocab.ContextSentence) || vocab.HasSentenceAudio || pendingSentenceAudio is not null)
@@ -322,12 +361,15 @@
                 pendingWordAudio = existing.Audio.WordAudio.Length > 0 ? existing.Audio.WordAudio : null;
                 pendingSentenceAudio = existing.Audio.SentenceAudio is { Length: > 0 } s ? s : null;
             }
+
+            await LoadReadingsAsync();
         }
         else
         {
             vocab = new Vocabulary();
             conjugations = new();
             meanings = new() { new MeaningRow() };
+            _sentence = null;
         }
     }
 
@@ -624,7 +666,51 @@
                 await VocabularyService.SaveConjugationAudioAsync(savedId, pendingConjugationAudio);
             audioChanged = false;
         }
+        // Work out readings for a new or changed context sentence in the background.
+        Readings.RequestBackfill();
         Nav.NavigateTo("/vocab");
+    }
+
+    private async Task LoadReadingsAsync()
+    {
+        _sentence = null;
+        _editingReadings = false;
+        _readingsError = null;
+        string? sentence = vocab.ContextSentence?.Trim();
+        if (string.IsNullOrEmpty(sentence)) {
+            return;
+        }
+        await Readings.EnsureAsync(new[] { sentence });
+        _sentence = await Readings.GetAsync(sentence);
+    }
+
+    private void StartEditingReadings()
+    {
+        _readingsText = _sentence?.Bracketed ?? string.Empty;
+        _readingsError = null;
+        _editingReadings = true;
+    }
+
+    private async Task SaveReadingsAsync()
+    {
+        if (_sentence is null) {
+            return;
+        }
+        _readingsError = await Readings.SaveEditedAsync(_sentence.Text, _readingsText);
+        if (_readingsError is null) {
+            _sentence = await Readings.GetAsync(_sentence.Text);
+            _editingReadings = false;
+        }
+    }
+
+    private async Task ResetReadingsAsync()
+    {
+        if (_sentence is null) {
+            return;
+        }
+        await Readings.ResetAsync(_sentence.Text);
+        _sentence = await Readings.GetAsync(_sentence.Text);
+        _editingReadings = false;
     }
 
     private async Task DeleteAsync()

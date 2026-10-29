@@ -11,6 +11,7 @@ namespace KotoNeko.Core.Ime;
 /// <param name="UsuallyKana">The dictionary says this word is usually written in kana.</param>
 /// <param name="ParticleLike">Only a particle, auxiliary, copula or conjunction: write it in kana.</param>
 /// <param name="LastChosen">When the user last picked this spelling for this reading, if ever.</param>
+/// <param name="FromVocabulary">One of the user's own vocabulary items rather than a dictionary entry.</param>
 public sealed record DictionaryWord(
     string Reading,
     string Written,
@@ -19,7 +20,8 @@ public sealed record DictionaryWord(
     int Order,
     bool UsuallyKana = false,
     bool ParticleLike = false,
-    DateTime? LastChosen = null);
+    DateTime? LastChosen = null,
+    bool FromVocabulary = false);
 
 /// <summary>Looks up words by reading. Implemented over the imported dictionary.</summary>
 public interface IDictionaryLookup
@@ -31,6 +33,9 @@ public interface IDictionaryLookup
     /// as a word of its own.
     /// </summary>
     Task<IReadOnlyList<DictionaryWord>> LookupAsync(IReadOnlyCollection<string> readings);
+
+    /// <summary>Every word written exactly as one of <paramref name="spellings"/> (dictionary and vocabulary).</summary>
+    Task<IReadOnlyList<DictionaryWord>> LookupWrittenAsync(IReadOnlyCollection<string> spellings);
 }
 
 /// <summary>One segment of a conversion: the kana it covers and what it could be written as.</summary>
@@ -54,6 +59,11 @@ public sealed class KanaKanjiConverter
     private const double KnownWordCost = 1.0;
     private const double UncommonWordCost = 0.3;
     private const double UnknownKanaCost = 5.0;
+    // Particles follow words; one at the very start (に|ほんの) is almost never right.
+    private const double ParticleFirstCost = 0.5;
+    // An inflected match (解こう from 解く) costs a little more than a word found as
+    // is, so と|こうえん beats とこう|えん when the split is otherwise a tie.
+    private const double InflectedCost = 0.05;
 
     private readonly IDictionaryLookup _lookup;
 
@@ -91,7 +101,9 @@ public sealed class KanaKanjiConverter
 
                 double step;
                 if (spans.TryGetValue((start, end), out List<Match>? matches)) {
-                    step = KnownWordCost + (matches.Min(m => m.Word.Rank) > 0 ? UncommonWordCost : 0);
+                    step = KnownWordCost + (matches.Min(m => m.Word.Rank) > 0 ? UncommonWordCost : 0)
+                        + (matches.All(m => m.Inflected) ? InflectedCost : 0)
+                        + (start == 0 && matches.All(m => m.Word.ParticleLike) ? ParticleFirstCost : 0);
                 } else if (end - start == 1) {
                     step = UnknownKanaCost;
                 } else {
@@ -149,7 +161,7 @@ public sealed class KanaKanjiConverter
     }
 
     /// <summary>A dictionary word matched against a stretch of input, and how it is written there.</summary>
-    private readonly record struct Match(DictionaryWord Word, string Written);
+    private readonly record struct Match(DictionaryWord Word, string Written, bool Inflected = false);
 
     /// <summary>
     /// Every stretch [start, end) of the key that is a dictionary word, as typed or
@@ -190,7 +202,7 @@ public sealed class KanaKanjiConverter
                         matches.Add(new Match(word, word.Written));
                     } else if ((word.Type & d.Types) != 0
                         && Deinflector.Reinflect(word.Written, word.Reading, piece) is string written) {
-                        matches.Add(new Match(word, written));
+                        matches.Add(new Match(word, written, Inflected: true));
                     }
                 }
             }

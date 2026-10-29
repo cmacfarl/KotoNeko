@@ -138,6 +138,13 @@ public class KanaKanjiConverterTests
             IReadOnlyList<DictionaryWord> found = _words.Where(w => wanted.Contains(w.Reading)).ToList();
             return Task.FromResult(found);
         }
+
+        public Task<IReadOnlyList<DictionaryWord>> LookupWrittenAsync(IReadOnlyCollection<string> spellings)
+        {
+            HashSet<string> wanted = new(spellings, StringComparer.Ordinal);
+            IReadOnlyList<DictionaryWord> found = _words.Where(w => wanted.Contains(w.Written)).ToList();
+            return Task.FromResult(found);
+        }
     }
 
     /// <summary>The fake dictionary, with some words marked as picked by the user before.</summary>
@@ -279,5 +286,55 @@ public class KanaKanjiConverterTests
         Assert.Equal("こーひー", Kana.ToHiragana("コーヒー"));
         Assert.Equal("コーヒー", Kana.ToKatakana("こーひー"));
         Assert.Equal("新聞を", Kana.ToHiragana("新聞ヲ"));
+    }
+}
+
+public class ConverterSplitTests
+{
+    private sealed class Lookup(DictionaryWord[] words) : IDictionaryLookup
+    {
+        public Task<IReadOnlyList<DictionaryWord>> LookupAsync(IReadOnlyCollection<string> readings) =>
+            Task.FromResult<IReadOnlyList<DictionaryWord>>(words.Where(w => readings.Contains(w.Reading)).ToList());
+
+        public Task<IReadOnlyList<DictionaryWord>> LookupWrittenAsync(IReadOnlyCollection<string> spellings) =>
+            Task.FromResult<IReadOnlyList<DictionaryWord>>(words.Where(w => spellings.Contains(w.Written)).ToList());
+    }
+
+    [Fact]
+    public async Task A_Particle_After_A_Word_Beats_Swallowing_It()
+    {
+        // ともだちとこうえん: 友達|と|公園, not 友達|とこう (渡航, or 解こう from 解く)|えん.
+        DictionaryWord[] words =
+        {
+            new("ともだち", "友達", WordType.None, 0, 0),
+            new("と", "と", WordType.None, 0, 1, ParticleLike: true),
+            new("こうえん", "公園", WordType.None, 0, 2),
+            new("とこう", "渡航", WordType.None, 0, 3),
+            new("とく", "解く", WordType.Godan, 0, 4),
+            new("えん", "円", WordType.None, 0, 5),
+        };
+        KanaKanjiConverter converter = new(new Lookup(words));
+
+        IReadOnlyList<ConversionSegment> result = await converter.ConvertAsync("ともだちとこうえん");
+
+        Assert.Equal(new[] { "友達", "と", "公園" }, result.Select(s => s.Candidates[0]));
+    }
+
+    [Fact]
+    public async Task A_Phrase_Does_Not_Start_With_A_Particle()
+    {
+        // にほんの: にほん|の, not に|ほんの.
+        DictionaryWord[] words =
+        {
+            new("にほん", "日本", WordType.None, 0, 0),
+            new("に", "に", WordType.None, 0, 1, ParticleLike: true),
+            new("ほんの", "ほんの", WordType.None, 0, 2),
+            new("の", "の", WordType.None, 0, 3, ParticleLike: true),
+        };
+        KanaKanjiConverter converter = new(new Lookup(words));
+
+        IReadOnlyList<ConversionSegment> result = await converter.ConvertAsync("にほんの");
+
+        Assert.Equal(new[] { "日本", "の" }, result.Select(s => s.Candidates[0]));
     }
 }

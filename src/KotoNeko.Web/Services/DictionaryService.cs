@@ -61,11 +61,45 @@ public class DictionaryService : IDictionaryLookup
         foreach (var v in vocabulary) {
             string reading = Kana.ToHiragana(v.Reading);
             if (wanted.Contains(reading)) {
-                words.Add(new DictionaryWord(reading, v.Japanese, TypeOf(v.VerbClass), Rank: 0, Order: int.MaxValue));
+                words.Add(new DictionaryWord(reading, v.Japanese, TypeOf(v.VerbClass), Rank: 0, Order: int.MaxValue, FromVocabulary: true));
             }
         }
 
         return await WithPastChoicesAsync(db, wanted, words);
+    }
+
+    public async Task<IReadOnlyList<DictionaryWord>> LookupWrittenAsync(IReadOnlyCollection<string> spellings)
+    {
+        if (spellings.Count == 0) {
+            return Array.Empty<DictionaryWord>();
+        }
+
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        HashSet<string> wanted = new(spellings, StringComparer.Ordinal);
+        List<DictionaryWord> words = new();
+
+        foreach (string[] chunk in wanted.Chunk(ChunkSize)) {
+            string placeholders = string.Join(",", chunk.Select((_, i) => $"{{{i}}}"));
+            List<DictionaryEntry> rows = await db.DictionaryEntries
+                .FromSqlRaw($"SELECT * FROM `DictionaryEntries` WHERE `Written` IN ({placeholders})", chunk.Cast<object>().ToArray())
+                .AsNoTracking()
+                .ToListAsync();
+            words.AddRange(rows
+                .Where(r => wanted.Contains(r.Written))
+                .Select(r => new DictionaryWord(r.Reading, r.Written, r.Type, r.Rank, r.Order, r.UsuallyKana, r.ParticleLike)));
+        }
+
+        // The user's own words, with the reading they learned: these win.
+        var vocabulary = await db.Vocabulary
+            .AsNoTracking()
+            .Select(v => new { v.Japanese, v.Reading, v.VerbClass })
+            .ToListAsync();
+        foreach (var v in vocabulary.Where(v => wanted.Contains(v.Japanese))) {
+            words.Add(new DictionaryWord(Kana.ToHiragana(v.Reading), v.Japanese, TypeOf(v.VerbClass),
+                Rank: 0, Order: int.MaxValue, FromVocabulary: true));
+        }
+
+        return words;
     }
 
     /// <summary>

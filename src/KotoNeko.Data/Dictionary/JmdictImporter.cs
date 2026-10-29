@@ -82,6 +82,9 @@ public static class JmdictImporter
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM `DictionaryEntries`;", cancellationToken);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM `DictionaryImports`;", cancellationToken);
+        // Readings worked out from the old dictionary are stale: drop them so they
+        // are rebuilt from this one. Readings the user corrected are kept.
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM `SentenceReadings` WHERE `IsEdited` = 0;", cancellationToken);
 
         for (int i = 0; i < rows.Count; i += BatchSize)
         {

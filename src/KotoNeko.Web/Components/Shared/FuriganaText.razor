@@ -1,0 +1,16 @@
+@* Japanese text with furigana over the pieces that carry a reading. *@
+<span class="kn-jp kn-furigana">@foreach (FuriganaPiece piece in Pieces)
+{
+    if (piece.Reading is null)
+    {
+        @piece.Text
+    }
+    else
+    {
+        <ruby>@piece.Text<rt>@piece.Reading</rt></ruby>
+    }
+}</span>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<FuriganaPiece> Pieces { get; set; } = Array.Empty<FuriganaPiece>();
+}

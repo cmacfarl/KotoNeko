@@ -36,6 +36,10 @@ else
                 <label>Items per lesson session</label>
                 <input class="kn-input" type="number" min="1" max="50" @bind="_settings.LessonBatchSize" />
             </div>
+            <div class="kn-form-row">
+                <label>Dictation sentences per day (0 pauses dictation)</label>
+                <input class="kn-input" type="number" min="0" max="200" @bind="_settings.DailyDictationCap" />
+            </div>
         </div>
     </div>
 

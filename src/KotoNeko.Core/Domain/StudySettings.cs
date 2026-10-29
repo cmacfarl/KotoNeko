@@ -21,6 +21,9 @@ public class StudySettings
     /// <summary>How many items one lesson session teaches.</summary>
     public int LessonBatchSize { get; set; } = 5;
 
+    /// <summary>Dictation sentences per (local) day. Practice only, so this is a plain cap.</summary>
+    public int DailyDictationCap { get; set; } = 10;
+
     /// <summary>Whether reviews ask the audio-first listening question.</summary>
     public bool ListeningEnabled { get; set; } = true;
 

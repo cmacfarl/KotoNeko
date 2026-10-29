@@ -317,6 +317,58 @@ kbd {
     background: #fafafa;
 }
 
+/* Furigana: room above the line for the readings */
+.kn-furigana { line-height: 2.1; }
+.kn-furigana rt { font-size: 0.55em; color: inherit; opacity: 0.8; }
+
+.kn-readings {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 0.3rem;
+    font-size: 1.1rem;
+}
+
+/* Dictation */
+.kn-dictation { max-width: 52rem; margin: 0 auto; }
+
+.kn-dictation-prompt { min-height: 220px; }
+
+.kn-dictation-context { font-size: 1.6rem; margin-bottom: 0.5rem; }
+
+.kn-dictation-result h2.kn-good { color: var(--kn-correct-dark); }
+.kn-dictation-result h2.kn-ok { color: #b07d00; }
+.kn-dictation-result h2.kn-bad { color: var(--kn-incorrect-dark); }
+
+.kn-diff { font-size: 1.4rem; line-height: 2.2; }
+
+.kn-diff-missing {
+    color: var(--kn-incorrect-dark);
+    text-decoration: underline wavy;
+}
+
+.kn-diff-wrong {
+    color: var(--kn-incorrect-dark);
+    font-weight: 600;
+    position: relative;
+}
+
+.kn-diff-wrong sup {
+    font-size: 0.55em;
+    color: var(--kn-muted);
+    font-weight: 400;
+    margin-left: 0.05em;
+}
+
+.kn-diff-extra {
+    color: var(--kn-muted);
+    text-decoration: line-through;
+}
+
+.kn-dictation-notes { margin: 0.25rem 0 0.75rem; padding-left: 1.2rem; }
+.kn-dictation-notes li { margin: 0.2rem 0; }
+
 /* Dictionary import progress (Settings) */
 .kn-import-progress { margin: 0.75rem 0; }
 

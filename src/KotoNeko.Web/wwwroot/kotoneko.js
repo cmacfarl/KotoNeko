@@ -284,6 +284,9 @@ window.kotoneko = window.kotoneko || {};
     // component only hears OnImeChanged(text, kana) and OnImeSubmit().
     // options.learn (default true): remember spellings the user picks, and put
     // past picks first. Off where kanji choice is being tested (dictation).
+    // options.replay: Tab, with nothing being composed, calls OnImeReplay().
+    // setLocked(input, true) ignores typing (e.g. while a result is shown); Enter
+    // still submits and Tab still replays.
     // ---------------------------------------------------------------------
     function hiraganaToKatakana(s) {
         return s.replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
@@ -315,6 +318,7 @@ window.kotoneko = window.kotoneko || {};
                 return;
             }
             const learn = !(options && options.learn === false);
+            const replay = !!(options && options.replay);
 
             const s = {
                 committed: "",   // text before the composition
@@ -323,7 +327,8 @@ window.kotoneko = window.kotoneko || {};
                 segs: null,      // while converting: [{ reading, candidates, index }]
                 focus: 0,        // segment being edited
                 request: 0,      // latest conversion request, to ignore stale replies
-                osIme: false     // the Windows IME was seen composing
+                osIme: false,    // the Windows IME was seen composing
+                locked: false    // typing is ignored (see setLocked)
             };
 
             const display = () => s.segs
@@ -497,6 +502,13 @@ window.kotoneko = window.kotoneko || {};
                 const handled = () => { e.preventDefault(); e.stopPropagation(); };
                 const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
 
+                if (s.locked) {
+                    if (e.key === "Enter") { handled(); dotNetRef.invokeMethodAsync("OnImeSubmit"); return; }
+                    if (e.key === "Tab" && replay) { handled(); dotNetRef.invokeMethodAsync("OnImeReplay"); return; }
+                    if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") { handled(); }
+                    return;
+                }
+
                 if (s.segs) {
                     if (e.key === " " || e.key === "ArrowDown") { handled(); cycle(1); return; }
                     if (e.key === "ArrowUp") { handled(); cycle(-1); return; }
@@ -528,6 +540,7 @@ window.kotoneko = window.kotoneko || {};
                 }
 
                 if (e.key === "Enter") { handled(); dotNetRef.invokeMethodAsync("OnImeSubmit"); return; }
+                if (e.key === "Tab" && replay) { handled(); dotNetRef.invokeMethodAsync("OnImeReplay"); return; }
                 if (e.key === " ") { handled(); commitChunk(" ", " "); render(); notify(); return; }
             };
 
@@ -591,6 +604,14 @@ window.kotoneko = window.kotoneko || {};
                     input.removeEventListener("blur", onBlur);
                 }
             };
+        },
+
+        // Ignore typing (true) or accept it again (false).
+        setLocked: function (input, locked) {
+            const ime = input && input._kotonekoIme;
+            if (ime) {
+                ime.state.locked = !!locked;
+            }
         },
 
         // Empty the field (e.g. for the next dictation sentence).

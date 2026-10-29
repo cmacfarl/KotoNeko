@@ -103,7 +103,13 @@ else
                     }
 
                     @if (!string.IsNullOrWhiteSpace(vocab.ContextSentence)) {
-                        <div class="kn-extra-row">@vocab.ContextSentence</div>
+                        <div class="kn-extra-row">
+                            @if (card.ContextSentence is { } sentence) {
+                                <FuriganaText Pieces="sentence" />
+                            } else {
+                                @vocab.ContextSentence
+                            }
+                        </div>
                     }
                     @if (!string.IsNullOrWhiteSpace(vocab.Memo)) {
                         <div class="kn-extra-row">@vocab.Memo</div>

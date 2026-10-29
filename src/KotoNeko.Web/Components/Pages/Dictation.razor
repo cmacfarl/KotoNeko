@@ -1,0 +1,258 @@
+@page "/dictation"
+@inject DictationService DictationPractice
+@inject SentenceReadingService Readings
+@inject IJSRuntime JS
+
+<PageTitle>Dictation · KotoNeko</PageTitle>
+
+@if (_loading)
+{
+    <p class="kn-empty">Loading dictation…</p>
+}
+else if (!_allowance.HasDictionary)
+{
+    <div class="kn-session-done">
+        <div class="big">📖</div>
+        <h1>Dictation needs the dictionary</h1>
+        <p>Answers are checked against each sentence's readings, which come from the dictionary. Import it first.</p>
+        <a class="kn-btn kn-btn-primary" href="/settings">Go to Settings</a>
+    </div>
+}
+else if (_items.Count == 0)
+{
+    <div class="kn-session-done">
+        <div class="big">🎧</div>
+        @if (_allowance.SentencesAvailable == 0)
+        {
+            <h1>No sentences to dictate yet</h1>
+            <p>Dictation uses the context sentences of words you've learned, once the sentence has audio.
+               Add a context sentence and fetch its speech on a word's edit page.</p>
+            <a class="kn-btn kn-btn-primary" href="/vocab">Vocabulary</a>
+        }
+        else if (_allowance.LeftToday == 0)
+        {
+            <h1>That's today's dictation</h1>
+            <p>You've done @_allowance.DoneToday of your @_allowance.Cap sentences today.</p>
+            <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+            <a class="kn-btn" href="/settings">Change the daily cap</a>
+        }
+        else
+        {
+            <h1>Sentence readings aren't ready yet</h1>
+            <p>KotoNeko is still working out readings for your sentences. Try again in a moment.</p>
+        }
+    </div>
+}
+else if (_index >= _items.Count)
+{
+    <div class="kn-session-done">
+        <div class="big">🎉</div>
+        <h1>Dictation done</h1>
+        <p>@_items.Count sentence@(_items.Count == 1 ? "" : "s") · @Percent(_scores.Average()) heard correctly on average.</p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+    </div>
+}
+else
+{
+    DictationItem item = _items[_index];
+    <div class="kn-dictation">
+        <div class="kn-quiz-header">
+            <a class="kn-quiz-exit" title="End dictation" href="/">✕</a>
+            <div class="kn-quiz-progress">
+                <div class="kn-quiz-progress-fill" style="width:@(100 * _index / _items.Count)%"></div>
+            </div>
+            <div class="kn-quiz-counts">@(_index + 1) / @_items.Count</div>
+        </div>
+
+        <div class="kn-prompt kn-prompt-listening kn-dictation-prompt">
+            <button class="kn-listen-btn" title="Play again (Tab)" @onclick="PlayAsync">🔊</button>
+            @if (item.Partial && _check is null)
+            {
+                <div class="kn-dictation-context"><FuriganaText Pieces="WithBlank(item)" /></div>
+                <div class="kn-prompt-type"><span class="strong">Dictation</span> · type the missing word</div>
+            }
+            else if (_check is null)
+            {
+                <div class="kn-prompt-type"><span class="strong">Dictation</span> · type what you hear</div>
+            }
+            else
+            {
+                <div class="kn-dictation-context"><FuriganaText Pieces="item.Sentence.Pieces" /></div>
+            }
+        </div>
+
+        <JapaneseInput @ref="_input" Learn="false" AutoFocus="true"
+                       Placeholder="@(item.Partial ? "The missing word…" : "What you heard…")"
+                       OnChanged="t => _typed = t" OnSubmit="OnSubmitAsync" OnReplay="PlayAsync" />
+        <p class="kn-hint">
+            Tab plays it again · Enter checks @(_check is null ? "(Enter with nothing typed shows the answer)" : "")
+        </p>
+
+        @if (_check is { } check)
+        {
+            <div class="kn-panel kn-dictation-result">
+                <h2 class="@(check.Sound.Score >= 0.9 ? "kn-good" : check.Sound.Score >= 0.6 ? "kn-ok" : "kn-bad")">
+                    @Percent(check.Sound.Score) heard correctly
+                </h2>
+
+                <p class="kn-hint">What was said, compared with what you typed:</p>
+                <p class="kn-diff kn-jp">
+                    @foreach (DiffPart part in check.Sound.Parts)
+                    {
+                        @switch (part.Kind)
+                        {
+                            case DiffKind.Same:
+                                <span>@part.Expected</span>
+                                break;
+                            case DiffKind.Missing:
+                                <span class="kn-diff-missing" title="You missed this">@part.Expected</span>
+                                break;
+                            case DiffKind.Wrong:
+                                <span class="kn-diff-wrong" title="You typed @part.Typed">@part.Expected<sup>@part.Typed</sup></span>
+                                break;
+                            case DiffKind.Extra:
+                                <span class="kn-diff-extra" title="Not in the sentence">@part.Typed</span>
+                                break;
+                        }
+                    }
+                </p>
+                <p class="kn-hint">
+                    <span class="kn-diff-missing">missed</span> · <span class="kn-diff-wrong">heard differently</span>
+                    (what you typed above it) · <span class="kn-diff-extra">not in the sentence</span>
+                </p>
+
+                @foreach (string note in check.Sound.ParticleNotes)
+                {
+                    <p class="kn-hint">Particle @note: that's how it sounds, so it counts. It's written @note[0].</p>
+                }
+
+                @if (check.Writing.Count > 0)
+                {
+                    <h3 class="kn-subhead">How you wrote it</h3>
+                    <ul class="kn-dictation-notes">
+                        @foreach (KanjiNote note in check.Writing)
+                        {
+                            <li class="kn-jp">
+                                @if (note.Kind == KanjiNoteKind.DifferentKanji)
+                                {
+                                    <span>
+                                        <span class="kn-diff-wrong">@note.Typed</span> → <strong>@note.Expected</strong>
+                                        <span class="kn-hint">same sound (@note.Reading), different kanji</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span>
+                                        <span>@note.Typed</span> → <strong>@note.Expected</strong>
+                                        <span class="kn-hint">fine in kana; this is how it's written</span>
+                                    </span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <p>
+                    <span class="kn-hint">Word:</span>
+                    <span class="kn-jp">@item.Japanese</span> · @item.Meaning
+                    · <a href="/vocab/@item.VocabularyId">Wrong reading above? Fix it</a>
+                </p>
+                <p class="kn-hint">Press Enter for the next sentence.</p>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private DictationAllowance _allowance = new(0, 0, 0, false);
+    private List<DictationItem> _items = new();
+    private int _index;
+    private JapaneseText _typed = new(string.Empty, string.Empty);
+    private DictationCheck? _check;
+    private readonly List<double> _scores = new();
+    private HashSet<string> _known = new();
+    private JapaneseInput? _input;
+    private bool _playQueued;
+
+    protected override async Task OnInitializedAsync()
+    {
+        DateTime now = DateTime.UtcNow;
+        _allowance = await DictationPractice.GetAllowanceAsync(now);
+        if (_allowance.HasDictionary && _allowance.LeftToday > 0) {
+            _items = await DictationPractice.BuildSessionAsync(now, Math.Min(_allowance.LeftToday, 10));
+            _known = await Readings.KnownWordsAsync();
+            _playQueued = _items.Count > 0;
+        }
+        _loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_playQueued && _input is not null) {
+            _playQueued = false;
+            await PlayAsync();
+        }
+    }
+
+    // Not awaited to the end of the clip, so typing can start while it plays.
+    private async Task PlayAsync()
+    {
+        if (_index >= _items.Count) {
+            return;
+        }
+        int id = _items[_index].VocabularyId;
+        try {
+            await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{id}/audio/sentence");
+        } catch {
+            // A failed clip leaves the sentence answerable: Tab tries again.
+        }
+    }
+
+    private async Task OnSubmitAsync()
+    {
+        if (_index >= _items.Count) {
+            return;
+        }
+
+        if (_check is not null) {
+            await NextAsync();
+            return;
+        }
+
+        DictationItem item = _items[_index];
+        _check = await DictationPractice.CheckAsync(item, _typed);
+        _scores.Add(_check.Sound.Score);
+        await DictationPractice.RecordAsync(item, _typed.Text, _check.Sound.Score, DateTime.UtcNow);
+        if (_input is not null) {
+            await _input.SetLockedAsync(true);
+        }
+    }
+
+    private async Task NextAsync()
+    {
+        _index++;
+        _check = null;
+        _typed = new JapaneseText(string.Empty, string.Empty);
+        if (_input is not null && _index < _items.Count) {
+            await _input.ClearAsync();
+            await _input.SetLockedAsync(false);
+            // Focus directly: a queued focus would land on the next keystroke.
+            await _input.FocusAsync();
+            _playQueued = true;
+        }
+    }
+
+    /// <summary>The sentence with the target word blanked out, furigana where still needed.</summary>
+    private IReadOnlyList<FuriganaPiece> WithBlank(DictationItem item)
+    {
+        IReadOnlyList<FuriganaPiece> pieces = item.Sentence.ForReader(_known);
+        int end = item.TargetStart + item.TargetLength;
+        List<FuriganaPiece> result = new(DictationService.Slice(pieces, 0, item.TargetStart));
+        result.Add(new FuriganaPiece("＿＿＿", null));
+        result.AddRange(DictationService.Slice(pieces, end, item.Sentence.Text.Length));
+        return result;
+    }
+
+    private static string Percent(double score) => $"{Math.Round(score * 100):0}%";
+}

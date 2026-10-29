@@ -29,15 +29,18 @@ public sealed class DictionaryImportService
 
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
     private readonly IHttpClientFactory _http;
+    private readonly SentenceReadingService _readings;
     private readonly ILogger<DictionaryImportService> _logger;
     private readonly object _lock = new();
     private DictionaryImportStatus _status = new(false, null, 0, 0, null, null, null);
 
     public DictionaryImportService(
-        IDbContextFactory<KotoNekoDbContext> factory, IHttpClientFactory http, ILogger<DictionaryImportService> logger)
+        IDbContextFactory<KotoNekoDbContext> factory, IHttpClientFactory http,
+        SentenceReadingService readings, ILogger<DictionaryImportService> logger)
     {
         _factory = factory;
         _http = http;
+        _readings = readings;
         _logger = logger;
     }
 
@@ -145,6 +148,8 @@ public sealed class DictionaryImportService
                 _logger.LogInformation("Imported {Entries} dictionary entries (version {Version}) in {Seconds:N0}s, peak memory {Peak} MB.",
                     result.Entries, result.Version, result.Elapsed.TotalSeconds, result.PeakMemoryMb);
                 Update(s => s with { Running = false, Stage = ImportStage.Done, Result = result });
+                // The import dropped readings worked out from the old dictionary: rebuild them.
+                _readings.RequestBackfill();
             } catch (Exception ex) {
                 _logger.LogError(ex, "Dictionary import failed.");
                 Update(s => s with { Running = false, Error = ex.Message });

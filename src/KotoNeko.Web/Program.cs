@@ -31,6 +31,7 @@ builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddScoped<ReviewService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<SettingsService>();
+builder.Services.AddScoped<DictationService>();
 builder.Services.AddScoped<DictionaryService>();
 
 // Dictionary imports run in the background, outside any page; the only network
@@ -41,6 +42,10 @@ builder.Services.AddHttpClient(DictionaryImportService.HttpClientName, client =>
     client.DefaultRequestHeaders.Add("User-Agent", "KotoNeko/1.0 (personal study app)");
 });
 builder.Services.AddSingleton<DictionaryImportService>();
+
+// Sentence readings (furigana) are generated in the background, never mid-review.
+builder.Services.AddSingleton<SentenceReadingService>();
+builder.Services.AddHostedService<SentenceReadingStartup>();
 builder.Services.AddScoped(sp => new KanaKanjiConverter(sp.GetRequiredService<DictionaryService>()));
 
 string ttsApiKey = builder.Configuration["GoogleTtsApiKey"] ?? string.Empty;

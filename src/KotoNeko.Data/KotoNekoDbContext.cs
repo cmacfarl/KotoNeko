@@ -23,6 +23,8 @@ public class KotoNekoDbContext : DbContext
     public DbSet<DictionaryEntry> DictionaryEntries => Set<DictionaryEntry>();
     public DbSet<DictionaryImport> DictionaryImports => Set<DictionaryImport>();
     public DbSet<ImeChoice> ImeChoices => Set<ImeChoice>();
+    public DbSet<SentenceReading> SentenceReadings => Set<SentenceReading>();
+    public DbSet<DictationAttempt> DictationAttempts => Set<DictationAttempt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -160,6 +162,30 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.Reading).HasMaxLength(DictionaryEntry.MaxLength).UseCollation("utf8mb4_bin").IsRequired();
             entity.Property(e => e.Written).HasMaxLength(DictionaryEntry.MaxLength).UseCollation("utf8mb4_bin").IsRequired();
             entity.HasIndex(e => e.Reading);
+            // Sentence readings look words up by spelling.
+            entity.HasIndex(e => e.Written);
+        });
+
+        modelBuilder.Entity<SentenceReading>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TextHash).HasMaxLength(64).IsFixedLength().IsRequired();
+            entity.Property(e => e.Text).HasMaxLength(SentenceReading.MaxTextLength).IsRequired();
+            entity.Property(e => e.Furigana).HasMaxLength(4000).IsRequired();
+            entity.Property(e => e.Words).HasColumnType("text").IsRequired();
+            entity.HasIndex(e => e.TextHash).IsUnique();
+        });
+
+        modelBuilder.Entity<DictationAttempt>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Sentence).HasMaxLength(SentenceReading.MaxTextLength).IsRequired();
+            entity.Property(e => e.Typed).HasMaxLength(SentenceReading.MaxTextLength).IsRequired();
+            entity.HasOne(e => e.StudyItem)
+                .WithMany()
+                .HasForeignKey(e => e.StudyItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.PracticedAt);
         });
 
         modelBuilder.Entity<ImeChoice>(entity =>

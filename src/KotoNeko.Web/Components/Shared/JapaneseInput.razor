@@ -32,6 +32,9 @@
     /// </summary>
     [Parameter] public bool Learn { get; set; } = true;
 
+    /// <summary>Tab (with nothing being composed) asks for the audio again.</summary>
+    [Parameter] public EventCallback OnReplay { get; set; }
+
     private ElementReference _input;
     private ElementReference _strip;
     private DotNetObjectReference<JapaneseInput>? _dotNetRef;
@@ -44,7 +47,7 @@
         }
 
         _dotNetRef = DotNetObjectReference.Create(this);
-        await JS.InvokeVoidAsync("kotoneko.japaneseInput.attach", _input, _strip, _dotNetRef, new { learn = Learn });
+        await JS.InvokeVoidAsync("kotoneko.japaneseInput.attach", _input, _strip, _dotNetRef, new { learn = Learn, replay = OnReplay.HasDelegate });
         _attached = true;
         if (AutoFocus) {
             await FocusAsync();
@@ -56,6 +59,17 @@
 
     [JSInvokable]
     public Task OnImeSubmit() => OnSubmit.InvokeAsync();
+
+    [JSInvokable]
+    public Task OnImeReplay() => OnReplay.InvokeAsync();
+
+    /// <summary>Ignore typing (Enter and Tab still work), e.g. while a result is shown.</summary>
+    public async Task SetLockedAsync(bool locked)
+    {
+        if (_attached) {
+            await JS.InvokeVoidAsync("kotoneko.japaneseInput.setLocked", _input, locked);
+        }
+    }
 
     /// <summary>Empty the field.</summary>
     public async Task ClearAsync()

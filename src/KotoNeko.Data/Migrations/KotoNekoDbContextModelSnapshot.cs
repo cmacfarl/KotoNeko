@@ -78,6 +78,45 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("Conjugations");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.DictationAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Partial")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("PracticedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("double");
+
+                    b.Property<string>("Sentence")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("StudyItemId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Typed")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PracticedAt");
+
+                    b.HasIndex("StudyItemId");
+
+                    b.ToTable("DictationAttempts");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.DictionaryEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -116,6 +155,8 @@ namespace KotoNeko.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Reading");
+
+                    b.HasIndex("Written");
 
                     b.ToTable("DictionaryEntries");
                 });
@@ -228,6 +269,48 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("ReviewLogs");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.SentenceReading", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Furigana")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<bool>("IsEdited")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("TextHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("char(64)")
+                        .IsFixedLength();
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Words")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TextHash")
+                        .IsUnique();
+
+                    b.ToTable("SentenceReadings");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.SourceMaterial", b =>
                 {
                     b.Property<int>("Id")
@@ -333,6 +416,9 @@ namespace KotoNeko.Data.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<int>("DailyDictationCap")
+                        .HasColumnType("int");
+
                     b.Property<int>("DailyLessonCap")
                         .HasColumnType("int");
 
@@ -359,6 +445,7 @@ namespace KotoNeko.Data.Migrations
                         new
                         {
                             Id = 1,
+                            DailyDictationCap = 10,
                             DailyLessonCap = 15,
                             DailyMinutesTarget = 60,
                             LessonBatchSize = 5,
@@ -492,6 +579,17 @@ namespace KotoNeko.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Vocabulary");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.DictationAttempt", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.StudyItem", "StudyItem")
+                        .WithMany()
+                        .HasForeignKey("StudyItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StudyItem");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.ReviewLog", b =>
