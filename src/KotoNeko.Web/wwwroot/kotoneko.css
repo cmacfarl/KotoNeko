@@ -369,6 +369,17 @@ kbd {
 .kn-dictation-notes { margin: 0.25rem 0 0.75rem; padding-left: 1.2rem; }
 .kn-dictation-notes li { margin: 0.2rem 0; }
 
+/* A command to copy (Settings: restoring a backup) */
+.kn-code {
+    background: #f6f6f6;
+    border: 1px solid var(--kn-border);
+    border-radius: 4px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    white-space: pre;
+}
+
 /* Dictionary import progress (Settings) */
 .kn-import-progress { margin: 0.75rem 0; }
 

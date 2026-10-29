@@ -2,8 +2,10 @@
 @inject SettingsService SettingsService
 @inject DictionaryService DictionaryService
 @inject DictionaryImportService ImportService
+@inject BackupService Backups
 @implements IDisposable
 @using KotoNeko.Data.Dictionary
+@using KotoNeko.Data.Backup
 
 <PageTitle>Settings · KotoNeko</PageTitle>
 
@@ -160,6 +162,70 @@ else
             used under the Creative Commons Attribution-ShareAlike 4.0 licence (www.edrdg.org/edrdg/licence.html).
         </p>
     </div>
+
+    <div class="kn-panel">
+        <h2>Backups</h2>
+        @if (Backups.Problem is string problem)
+        {
+            <div class="kn-msg kn-msg-err">@problem</div>
+        }
+        else
+        {
+            BackupStatus backup = Backups.Status;
+            <p>
+                Backs up the whole database (gzipped SQL) into <code>@Backups.Folder</code>.
+                KotoNeko also backs up automatically before it applies a database migration at startup.
+            </p>
+            <div class="kn-toolbar">
+                <button class="kn-btn kn-btn-accent" @onclick="BackUpNow" disabled="@backup.Running">
+                    @(backup.Running ? "Backing up…" : "Back up now")
+                </button>
+            </div>
+            @if (backup.Error is not null)
+            {
+                <div class="kn-msg kn-msg-err">The backup failed: @backup.Error</div>
+            }
+            else if (backup.Last is { } last && !backup.Running)
+            {
+                <div class="kn-msg kn-msg-ok">Backed up to @last.Name (@Megabytes(last.Size)).</div>
+            }
+
+            @if (_backups.Count == 0)
+            {
+                <p class="kn-empty">No backups yet.</p>
+            }
+            else
+            {
+                <table class="kn-table">
+                    <thead><tr><th>Backup</th><th>Made</th><th>Size</th></tr></thead>
+                    <tbody>
+                        @foreach (BackupFile file in _backups.Take(15))
+                        {
+                            <tr>
+                                <td><code>@file.Name</code></td>
+                                <td>@file.CreatedAt.ToString("MMM d, yyyy HH:mm")</td>
+                                <td>@Megabytes(file.Size)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (_backups.Count > 15)
+                {
+                    <p class="kn-hint">…and @(_backups.Count - 15) older. Old backups are never deleted automatically.</p>
+                }
+                else
+                {
+                    <p class="kn-hint">Old backups are never deleted automatically.</p>
+                }
+            }
+
+            <p class="kn-hint">
+                To restore one, stop KotoNeko and run this from the repository root (Git Bash), with the backup's name.
+                It replaces every table in <code>@Backups.Database</code> with the backup's copy:
+            </p>
+            <pre class="kn-code">gunzip -c "backups/@(_backups.FirstOrDefault()?.Name ?? "kotoneko-….sql.gz")" | "@MysqlPath" -u YOUR_USER -p @Backups.Database</pre>
+        }
+    </div>
 }
 
 @code {
@@ -172,6 +238,7 @@ else
     private string? _importMessage;
     private bool _wasRunning;
     private int _choiceCount;
+    private List<BackupFile> _backups = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -180,6 +247,8 @@ else
         _choiceCount = await DictionaryService.CountChoicesAsync();
         _wasRunning = ImportService.Status.Running;
         ImportService.Changed += OnImportChanged;
+        _backups = Backups.List();
+        Backups.Changed += OnBackupChanged;
     }
 
     // The import runs on a background thread; redraw on this page's dispatcher, and
@@ -260,7 +329,38 @@ else
         _ => "starting",
     };
 
-    public void Dispose() => ImportService.Changed -= OnImportChanged;
+    private void BackUpNow() => Backups.Start();
+
+    // Backups run on a background thread; refresh the list when one finishes.
+    private void OnBackupChanged() => _ = InvokeAsync(() =>
+    {
+        if (!Backups.Status.Running) {
+            _backups = Backups.List();
+        }
+        StateHasChanged();
+    });
+
+    /// <summary>The mysql client next to mysqldump, written the Git Bash way.</summary>
+    private string MysqlPath
+    {
+        get {
+            string? folder = Path.GetDirectoryName(Backups.Mysqldump);
+            string mysql = folder is null ? "mysql" : Path.Combine(folder, "mysql.exe");
+            return mysql.Length > 2 && mysql[1] == ':'
+                ? "/" + char.ToLowerInvariant(mysql[0]) + mysql[2..].Replace('\\', '/')
+                : mysql;
+        }
+    }
+
+    private static string Megabytes(long bytes) => bytes < 1024 * 1024
+        ? $"{Math.Max(1, bytes / 1024)} KB"
+        : $"{bytes / (1024.0 * 1024.0):N1} MB";
+
+    public void Dispose()
+    {
+        ImportService.Changed -= OnImportChanged;
+        Backups.Changed -= OnBackupChanged;
+    }
 
     private async Task SaveAsync()
     {

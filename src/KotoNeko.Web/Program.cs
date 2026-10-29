@@ -48,6 +48,16 @@ builder.Services.AddSingleton<SentenceReadingService>();
 builder.Services.AddHostedService<SentenceReadingStartup>();
 builder.Services.AddScoped(sp => new KanaKanjiConverter(sp.GetRequiredService<DictionaryService>()));
 
+// Database backups into the repository's backups folder (Backup:Directory and
+// Backup:Mysqldump override where they go and which mysqldump is used).
+builder.Services.AddSingleton(sp => new BackupService(
+    connectionString,
+    builder.Configuration["Backup:Directory"] is { Length: > 0 } backupDirectory
+        ? backupDirectory
+        : KotoNeko.Data.Backup.BackupFiles.FindRepositoryFolder(builder.Environment.ContentRootPath),
+    BackupService.FindMysqldump(builder.Configuration["Backup:Mysqldump"]),
+    sp.GetRequiredService<ILogger<BackupService>>()));
+
 string ttsApiKey = builder.Configuration["GoogleTtsApiKey"] ?? string.Empty;
 builder.Services.AddSingleton<JapaneseTtsService>(_ => new JapaneseTtsService(ttsApiKey));
 
@@ -68,6 +78,24 @@ using (IServiceScope scope = app.Services.CreateScope())
     try
     {
         using KotoNekoDbContext db = factory.CreateDbContext();
+
+        // Back up before changing the schema of a database that already has data:
+        // a migration that fails part-way can't be rolled back in MySQL. A failed
+        // backup is logged loudly but doesn't stop the app from starting.
+        if (db.Database.GetPendingMigrations().Any() && db.Database.GetAppliedMigrations().Any())
+        {
+            BackupService backups = app.Services.GetRequiredService<BackupService>();
+            try
+            {
+                KotoNeko.Data.Backup.BackupFile backup = await backups.BackupNowAsync("before-migration");
+                logger.LogInformation("Backed up to {File} before applying migrations.", backup.Path);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "BACKUP BEFORE MIGRATION FAILED. Migrating anyway; back up by hand if you can.");
+            }
+        }
+
         db.Database.Migrate();
         logger.LogInformation("Database is up to date.");
     }
