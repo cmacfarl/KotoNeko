@@ -1,0 +1,414 @@
+@inject PracticeSentenceService Sentences
+@inject KnownWordsService KnownWords
+@inject SentenceReadingService Readings
+@inject SentenceGenerationService Generation
+@inject IJSRuntime JS
+@using KotoNeko.Core.Llm
+@using KotoNeko.Web.Services.Llm
+
+@* A word's practice sentences: what listening and dictation play. Each is checked
+   against the known-words pool every time it's shown. *@
+
+<div class="kn-panel">
+    <h2>Practice sentences</h2>
+    <p class="kn-hint">
+        Short sentences for hearing this word in context: listening plays the word, then a sentence, and dictation uses them too.
+        A sentence is used once every other word in it is one you know, and listening only plays ones of
+        @SentenceCheck.ListeningMaxKana kana or fewer. Unknown words are listed under each sentence.
+    </p>
+
+    <div class="kn-toolbar">
+        @if (Generation.Route is { IsConfigured: true } route)
+        {
+            <button class="kn-btn kn-btn-primary" type="button" disabled="@_busy" @onclick="GenerateAsync">
+                @(_generating ? "Generating…" : "✨ Generate sentences")
+            </button>
+            <span class="kn-hint">@SentenceGeneration.Count drafts from @route.Provider (@route.Model), using your known words and Known grammar.</span>
+        }
+        else if (Generation.Route is { } unconfigured)
+        {
+            <span class="kn-hint">Generating sentences uses @unconfigured.Provider, which needs a key: see <a href="/settings">Settings</a>.</span>
+        }
+        else
+        {
+            <span class="kn-hint">To generate sentences, set an AI provider for the Generate job: see <a href="/settings">Settings</a>.</span>
+        }
+    </div>
+
+    @if (_message is not null)
+    {
+        <div class="kn-msg @(_messageIsError ? "kn-msg-err" : "kn-msg-ok")">@_message</div>
+    }
+
+    @if (_sentences is null)
+    {
+        <p class="kn-empty">Loading…</p>
+    }
+    else
+    {
+        @if (_sentences.Count == 0)
+        {
+            <p class="kn-empty">No practice sentences yet.</p>
+        }
+        @foreach (CheckedSentence item in _sentences)
+        {
+            PracticeSentence s = item.Sentence;
+            <div class="kn-practice-sentence @(s.InUse ? "" : "kn-practice-unused")">
+                <div class="kn-practice-text">
+                    @if (item.View is { } view)
+                    {
+                        <FuriganaText Pieces="view.ForReader(_furiganaKnown)" />
+                    }
+                    else
+                    {
+                        <span class="kn-jp">@s.Text</span>
+                    }
+                </div>
+                <div class="kn-practice-meta">
+                    <span class="kn-pill @StatusClass(s.Status)">@StatusLabel(s.Status)</span>
+                    <span class="kn-hint">@SourceLabel(s.Source)@(item.Check is { } c ? $" · {c.KanaLength} kana" : "")</span>
+                    <span class="@(item.UsableForListening ? "kn-good-text" : "kn-hint")">@Verdict(item)</span>
+                </div>
+                @if (item.Check is { Unknown.Count: > 0 } check)
+                {
+                    <div class="kn-practice-unknown">
+                        <span class="kn-hint">Unknown:</span>
+                        @foreach (UnknownWord u in check.Unknown)
+                        {
+                            <span class="kn-unknown-word">
+                                <span style="font-size:1.1rem">@u.Text</span>
+                                @if (u.Lemma is { } lemma)
+                                {
+                                    <button class="kn-btn kn-btn-sm" type="button" disabled="@_busy"
+                                            title="Count @lemma as a word you know" @onclick="() => KnowAsync(lemma)">I know this</button>
+                                }
+                            </span>
+                        }
+                    </div>
+                }
+                @if (s.Status == PracticeSentenceStatus.NeedsFix && s.ReviewNote is { } note)
+                {
+                    <div class="kn-msg kn-msg-err">Proofreader's note: @note</div>
+                }
+                @if (_editing == s.Id)
+                {
+                    <div class="kn-form-row">
+                        <input class="kn-input" style="font-size:1.2rem" @bind="_editText" />
+                    </div>
+                    <div class="kn-form-row">
+                        <input class="kn-input" placeholder="English translation (optional)" @bind="_editEnglish" />
+                    </div>
+                    <div class="kn-toolbar">
+                        <button class="kn-btn kn-btn-sm kn-btn-primary" type="button" @onclick="() => SaveEditAsync(s)">Save</button>
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="() => _editing = null">Cancel</button>
+                        <span class="kn-hint">Changing the sentence drops its audio; it's voiced again when approved.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="kn-practice-english">
+                        <input class="kn-input" placeholder="English translation (optional)" value="@s.English"
+                               @onchange="e => SetEnglishAsync(s, e.Value?.ToString() ?? string.Empty)" />
+                    </div>
+                }
+                @if (_editingReadings == s.Id)
+                {
+                    <input class="kn-input kn-jp" @bind="_readingsText" />
+                    <div class="kn-hint">A reading goes in [ ] right after its kanji: 毎朝[まいあさ]. A base mixing kanji and kana goes in { }.</div>
+                    @if (_readingsError is not null)
+                    {
+                        <div class="kn-hint" style="color:var(--kn-incorrect-dark)">@_readingsError</div>
+                    }
+                    <div class="kn-toolbar">
+                        <button class="kn-btn kn-btn-sm kn-btn-primary" type="button" @onclick="() => SaveReadingsAsync(s)">Save readings</button>
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="() => ResetReadingsAsync(s)">Regenerate</button>
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="() => _editingReadings = null">Cancel</button>
+                    </div>
+                }
+                <div class="kn-toolbar">
+                    @if (s.HasAudio)
+                    {
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="() => PlayAsync(item)">▶ Play</button>
+                    }
+                    <button class="kn-btn kn-btn-sm" type="button" disabled="@_busy" @onclick="() => GenerateAudioAsync(s)"
+                            title="Generate speech at your default speed">@(s.HasAudio ? "↻ Regenerate audio" : "▶ Generate audio")</button>
+                    @if (!s.InUse)
+                    {
+                        <button class="kn-btn kn-btn-sm kn-btn-primary" type="button" disabled="@_busy" @onclick="() => ApproveAsync(s)"
+                                title="Put it in use (and voice it, if it has no audio)">Approve</button>
+                        @if (_editing != s.Id)
+                        {
+                            <button class="kn-btn kn-btn-sm" type="button" @onclick="() => StartEditing(s)">Edit</button>
+                        }
+                    }
+                    else
+                    {
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="() => SetStatusAsync(s, PracticeSentenceStatus.NeedsFix)"
+                                title="Pull it from practice until it's fixed">Needs a fix</button>
+                        @if (s.Status == PracticeSentenceStatus.Approved)
+                        {
+                            <button class="kn-btn kn-btn-sm" type="button" @onclick="() => SetStatusAsync(s, PracticeSentenceStatus.NativeChecked)"
+                                    title="A native speaker has OK'd it">Native-checked</button>
+                        }
+                    }
+                    @if (item.View is not null && _editingReadings != s.Id)
+                    {
+                        <button class="kn-btn kn-btn-sm" type="button" @onclick="() => StartEditingReadings(item)">Fix readings</button>
+                    }
+                    <button class="kn-btn kn-btn-sm kn-btn-danger" type="button" @onclick="() => DeleteAsync(s)">@(s.Status == PracticeSentenceStatus.Draft ? "Reject" : "Delete")</button>
+                </div>
+            </div>
+        }
+
+        <h3 class="kn-subhead">Add a sentence</h3>
+        <div class="kn-form-row">
+            <JapaneseInput @ref="_input" Placeholder="A short sentence using this word…" OnChanged="t => _newText = t.Text" OnSubmit="AddAsync" />
+        </div>
+        <div class="kn-form-row">
+            <input class="kn-input" placeholder="English translation (optional)" @bind="_newEnglish" />
+        </div>
+        <div class="kn-toolbar">
+            <button class="kn-btn kn-btn-primary" type="button" disabled="@_busy" @onclick="AddAsync">Add</button>
+            @if (CanPromote)
+            {
+                <button class="kn-btn" type="button" disabled="@_busy" @onclick="PromoteAsync"
+                        title="Use the context sentence as a practice sentence too (its audio is reused)">Use the context sentence</button>
+            }
+        </div>
+        <p class="kn-hint">New sentences are approved straight away and voiced at your default speed.</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int VocabularyId { get; set; }
+
+    /// <summary>The word's saved context sentence, offered for promotion.</summary>
+    [Parameter] public string? ContextSentence { get; set; }
+
+    private List<CheckedSentence>? _sentences;
+    private HashSet<string> _furiganaKnown = new();
+    private JapaneseInput? _input;
+    private string _newText = string.Empty;
+    private string _newEnglish = string.Empty;
+    private int? _editingReadings;
+    private string _readingsText = string.Empty;
+    private string? _readingsError;
+    private bool _busy;
+    private bool _generating;
+    private int? _editing;
+    private string _editText = string.Empty;
+    private string _editEnglish = string.Empty;
+    private string? _message;
+    private bool _messageIsError;
+
+    private bool CanPromote =>
+        !string.IsNullOrWhiteSpace(ContextSentence)
+        && _sentences?.Any(s => s.Sentence.Text == ContextSentence.Trim()) == false;
+
+    private int _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // The editor re-renders on every field change; only a different word needs a reload.
+        if (_loadedFor != VocabularyId) {
+            _loadedFor = VocabularyId;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _sentences = await Sentences.ListForWordAsync(VocabularyId);
+        _furiganaKnown = await Readings.KnownWordsAsync();
+    }
+
+    private void Show(string? message, bool error = false)
+    {
+        _message = message;
+        _messageIsError = error;
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try {
+            await action();
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private Task AddAsync() => RunAsync(async () =>
+    {
+        (bool added, string? message) = await Sentences.AddAsync(VocabularyId, _newText, _newEnglish);
+        Show(message, error: !added);
+        if (added) {
+            _newText = string.Empty;
+            _newEnglish = string.Empty;
+            if (_input is not null) {
+                await _input.ClearAsync();
+            }
+        }
+    });
+
+    private async Task GenerateAsync()
+    {
+        _generating = true;
+        try {
+            await RunAsync(async () =>
+            {
+                try {
+                    (_, string message) = await Generation.GenerateAsync(VocabularyId);
+                    Show(message);
+                } catch (LlmException ex) {
+                    Show($"No sentences this time: {ex.Message}", error: true);
+                } catch (Exception ex) {
+                    Show($"Generating failed: {ex.Message}", error: true);
+                }
+            });
+        } finally {
+            _generating = false;
+        }
+    }
+
+    private Task ApproveAsync(PracticeSentence s) => RunAsync(async () =>
+    {
+        string? note = await Sentences.ApproveAsync(s.Id);
+        Show(note, error: note is not null);
+    });
+
+    private void StartEditing(PracticeSentence s)
+    {
+        _editing = s.Id;
+        _editText = s.Text;
+        _editEnglish = s.English;
+    }
+
+    private Task SaveEditAsync(PracticeSentence s) => RunAsync(async () =>
+    {
+        string? error = await Sentences.EditAsync(s.Id, _editText, _editEnglish);
+        Show(error, error is not null);
+        if (error is null) {
+            _editing = null;
+        }
+    });
+
+    private Task PromoteAsync() => RunAsync(async () =>
+    {
+        (bool added, string? message) = await Sentences.PromoteContextAsync(VocabularyId);
+        Show(message, error: !added);
+    });
+
+    private Task GenerateAudioAsync(PracticeSentence s) => RunAsync(async () =>
+    {
+        string? note = await Sentences.GenerateAudioAsync(s.Id);
+        Show(note ?? "Audio generated.", error: note is not null);
+    });
+
+    private Task SetStatusAsync(PracticeSentence s, PracticeSentenceStatus status) => RunAsync(async () =>
+    {
+        await Sentences.SetStatusAsync(s.Id, status);
+        Show(null);
+    });
+
+    private async Task SetEnglishAsync(PracticeSentence s, string english)
+    {
+        await Sentences.SetEnglishAsync(s.Id, english);
+        s.English = english.Trim();
+    }
+
+    private Task DeleteAsync(PracticeSentence s) => RunAsync(async () =>
+    {
+        await Sentences.DeleteAsync(s.Id);
+        Show(null);
+    });
+
+    private Task KnowAsync(string lemma) => RunAsync(async () =>
+    {
+        Show(await KnownWords.MarkKnownAsync(lemma));
+    });
+
+    private void StartEditingReadings(CheckedSentence item)
+    {
+        _editingReadings = item.Sentence.Id;
+        _readingsText = item.View?.Bracketed ?? string.Empty;
+        _readingsError = null;
+    }
+
+    private Task SaveReadingsAsync(PracticeSentence s) => RunAsync(async () =>
+    {
+        _readingsError = await Readings.SaveEditedAsync(s.Text, _readingsText);
+        if (_readingsError is null) {
+            _editingReadings = null;
+        }
+    });
+
+    private Task ResetReadingsAsync(PracticeSentence s) => RunAsync(async () =>
+    {
+        await Readings.ResetAsync(s.Text);
+        _editingReadings = null;
+    });
+
+    private async Task PlayAsync(CheckedSentence item)
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.playAudio", item.AudioUrl);
+        } catch {
+            Show("The audio couldn't be played.", error: true);
+        }
+    }
+
+    private static string Verdict(CheckedSentence item)
+    {
+        PracticeSentence s = item.Sentence;
+        if (!s.InUse && item.Check is { } draft) {
+            // Drafts and pulled sentences: say how they'd fare once approved.
+            string unused = s.Status == PracticeSentenceStatus.Draft ? "draft" : "not in use";
+            return !draft.HasTarget ? $"{unused}: the word isn't in it as written"
+                : !draft.Comprehensible ? $"{unused}: {draft.Unknown.Count} unknown word{(draft.Unknown.Count == 1 ? "" : "s")}"
+                : draft.KanaLength > SentenceCheck.ListeningMaxKana ? $"{unused}: all known, but too long for listening"
+                : $"{unused}: ✓ passes the check";
+        }
+        if (!s.InUse) {
+            return "not in use";
+        }
+        if (item.Check is not { } check) {
+            return "readings not worked out yet (is the dictionary imported?)";
+        }
+        if (!check.HasTarget) {
+            return "the word isn't in it as written, so it isn't used";
+        }
+        if (!check.Comprehensible) {
+            return check.Unknown.Count == 1 ? "1 unknown word: dictation types only this word" : $"{check.Unknown.Count} unknown words: dictation types only this word";
+        }
+        if (!s.HasAudio) {
+            return "no audio yet";
+        }
+        return check.KanaLength <= SentenceCheck.ListeningMaxKana
+            ? "✓ used for listening and dictation"
+            : "✓ used for dictation (too long for listening)";
+    }
+
+    private static string StatusLabel(PracticeSentenceStatus status) => status switch {
+        PracticeSentenceStatus.Draft => "draft",
+        PracticeSentenceStatus.Approved => "approved",
+        PracticeSentenceStatus.NativeChecked => "native-checked",
+        PracticeSentenceStatus.NeedsFix => "needs a fix",
+        _ => status.ToString(),
+    };
+
+    private static string StatusClass(PracticeSentenceStatus status) => status switch {
+        PracticeSentenceStatus.Approved => "kn-pill-stage",
+        PracticeSentenceStatus.NativeChecked => "kn-pill-known",
+        PracticeSentenceStatus.NeedsFix => "kn-pill-donotuse",
+        _ => "kn-pill-asleep",
+    };
+
+    private static string SourceLabel(PracticeSentenceSource source) => source switch {
+        PracticeSentenceSource.Context => "from the context sentence",
+        PracticeSentenceSource.Yours => "yours",
+        PracticeSentenceSource.Generated => "generated",
+        _ => source.ToString(),
+    };
+}

@@ -14,6 +14,9 @@ public record UpcomingSession(DateTime AvailableAt, int Count);
 /// <summary>A word answered better by sight (meaning/reading) than by ear (listening).</summary>
 public record EarGapItem(int VocabularyId, string Japanese, string Reading, string Meaning, int SightPercent, int EarPercent);
 
+/// <summary>A word being studied with no practice sentence listening can use yet.</summary>
+public record NeedsSentenceItem(int VocabularyId, string Japanese, string Reading, string Meaning);
+
 /// <summary>Correct answers out of total, as a whole percentage (null when nothing was answered).</summary>
 public record Accuracy(int Correct, int Total)
 {
@@ -50,15 +53,23 @@ public class DashboardSummary
 
     /// <summary>The next few upcoming review sessions, soonest first.</summary>
     public List<UpcomingSession> UpcomingSessions { get; init; } = new();
+
+    /// <summary>Words being studied that have no usable practice sentence, due soonest first.</summary>
+    public List<NeedsSentenceItem> NeedsSentence { get; init; } = new();
+
+    /// <summary>How many words being studied have no usable practice sentence.</summary>
+    public int NeedsSentenceCount { get; init; }
 }
 
 public class DashboardService
 {
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
+    private readonly PracticeSentenceService _sentences;
 
-    public DashboardService(IDbContextFactory<KotoNekoDbContext> factory)
+    public DashboardService(IDbContextFactory<KotoNekoDbContext> factory, PracticeSentenceService sentences)
     {
         _factory = factory;
+        _sentences = sentences;
     }
 
     public async Task<DashboardSummary> GetSummaryAsync(DateTime now)
@@ -140,6 +151,7 @@ public class DashboardService
         Accuracy byEar = await AccuracyAsync(db, accuracySince, ListeningTypes);
         Accuracy bySight = await AccuracyAsync(db, accuracySince, SightTypes);
         List<EarGapItem> earGaps = await EarGapsAsync(db, now - EarGapWindow);
+        (List<NeedsSentenceItem> needsSentence, int needsSentenceCount) = await NeedsSentenceAsync(db);
 
         return new DashboardSummary
         {
@@ -154,7 +166,37 @@ public class DashboardService
             BandCounts = bands,
             RecentlyMissed = missed,
             UpcomingSessions = sessions,
+            NeedsSentence = needsSentence,
+            NeedsSentenceCount = needsSentenceCount,
         };
+    }
+
+    private const int NeedsSentenceShown = 10;
+
+    /// <summary>
+    /// Words being studied (awake, past their lesson, not burned) with no practice
+    /// sentence a listening question can use: the queue for adding sentences.
+    /// </summary>
+    private async Task<(List<NeedsSentenceItem> Items, int Count)> NeedsSentenceAsync(KotoNekoDbContext db)
+    {
+        var studying = await db.Vocabulary.AsNoTracking()
+            .Where(v => !v.IsAsleep && v.Srs != null && v.Srs.Stage != SrsStage.Locked && v.Srs.Stage != SrsStage.Burned)
+            .OrderBy(v => v.Srs!.NextReviewAt)
+            .Select(v => new {
+                v.Id, v.Japanese, v.Reading,
+                Meaning = v.Meanings.OrderBy(m => m.SortOrder).Select(m => m.Text).FirstOrDefault(),
+            })
+            .ToListAsync();
+
+        Dictionary<int, List<CheckedSentence>> sentences = await _sentences.CheckedForAsync(
+            studying.Select(v => v.Id).ToList(), inUseOnly: true, ensureReadings: false);
+        var lacking = studying
+            .Where(v => !(sentences.GetValueOrDefault(v.Id)?.Any(c => c.UsableForListening) ?? false))
+            .ToList();
+        return (lacking.Take(NeedsSentenceShown)
+                .Select(v => new NeedsSentenceItem(v.Id, v.Japanese, v.Reading, v.Meaning ?? string.Empty))
+                .ToList(),
+            lacking.Count);
     }
 
     /// <summary>How many upcoming review sessions to surface on the dashboard.</summary>

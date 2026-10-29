@@ -1,0 +1,272 @@
+@page "/grammar"
+@inject GrammarService Grammar
+
+<PageTitle>Grammar · KotoNeko</PageTitle>
+
+<h1>Grammar</h1>
+
+<p class="kn-hint">
+    Your grammar list. Generated practice sentences keep to the points marked <strong>Known</strong>.
+    The list was drafted for KotoNeko and checked against JLPT Sensei's published lists. There's no official JLPT grammar list,
+    so the levels are the usual placements and the list is meant to be pruned. Remove what doesn't belong, mark what you know,
+    and add anything missing.
+</p>
+
+@if (_message is not null)
+{
+    <div class="kn-msg @(_messageIsError ? "kn-msg-err" : "kn-msg-ok")">@_message</div>
+}
+
+<div class="kn-panel">
+    @if (_counts.Count > 0)
+    {
+        <p>
+            @foreach (JlptLevel level in _counts.Keys.Select(k => k.Level).Distinct().OrderDescending())
+            {
+                <span style="margin-right:1.5rem">
+                    <strong>@level</strong>:
+                    @Count(level, GrammarStatus.Known) known · @Count(level, GrammarStatus.Studying) studying · @Count(level, GrammarStatus.NotYet) not yet
+                </span>
+            }
+        </p>
+    }
+    @if (_draftedNotAdded > 0)
+    {
+        <button class="kn-btn kn-btn-primary" @onclick="SeedAsync" disabled="@_busy">
+            @(_counts.Count == 0 ? $"Add the drafted N5–N3 list ({_draftedNotAdded} points)" : $"Add {_draftedNotAdded} new points from the drafted list")
+        </button>
+        <p class="kn-hint">N5 points start as Known; N4 and N3 as Not yet. Points already on your list, removed ones included, are left as they are.</p>
+    }
+
+    <h2>Add a grammar point</h2>
+    <div class="kn-toolbar">
+        <input class="kn-input" style="max-width:220px" placeholder="Pattern (〜のに)" @bind="_newPattern" />
+        <input class="kn-input" style="max-width:320px" placeholder="Meaning (even though)" @bind="_newMeaning" />
+        <select class="kn-select" style="max-width:100px" @bind="_newLevel">
+            @foreach (JlptLevel level in Enum.GetValues<JlptLevel>().OrderDescending())
+            {
+                <option value="@level">@level</option>
+            }
+        </select>
+        <button class="kn-btn" @onclick="AddAsync" disabled="@_busy">Add</button>
+    </div>
+</div>
+
+<div class="kn-toolbar">
+    <input class="kn-input" style="max-width:220px" placeholder="Search…" @bind="_search" @bind:event="oninput" @onkeyup="LoadAsync" />
+    <select class="kn-select" style="max-width:180px" @bind="_level" @bind:after="LoadAsync">
+        <option value="">Any JLPT level</option>
+        @foreach (JlptLevel level in Enum.GetValues<JlptLevel>().OrderDescending())
+        {
+            <option value="@level">@level</option>
+        }
+    </select>
+    <select class="kn-select" style="max-width:180px" @bind="_status" @bind:after="LoadAsync">
+        <option value="">Any status</option>
+        <option value="@GrammarStatus.Known">Known</option>
+        <option value="@GrammarStatus.Studying">Studying</option>
+        <option value="@GrammarStatus.NotYet">Not yet</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:0.35rem;color:#666;font-size:0.9rem">
+        <input type="checkbox" @bind="_pruned" @bind:after="LoadAsync" /> show removed
+    </label>
+</div>
+
+@if (_entries.Count > 0)
+{
+    @if (!_pruned)
+    {
+        <div class="kn-toolbar">
+            <span class="kn-hint">@_entries.Count shown. Mark all of them:</span>
+            <button class="kn-btn kn-btn-sm" @onclick="() => SetAllAsync(GrammarStatus.Known)" disabled="@_busy">Known</button>
+            <button class="kn-btn kn-btn-sm" @onclick="() => SetAllAsync(GrammarStatus.Studying)" disabled="@_busy">Studying</button>
+            <button class="kn-btn kn-btn-sm" @onclick="() => SetAllAsync(GrammarStatus.NotYet)" disabled="@_busy">Not yet</button>
+        </div>
+    }
+
+    <div class="kn-wide-view">
+    <div class="kn-panel">
+        <table class="kn-table">
+            <thead>
+            <tr>
+                <th style="width:35%">Pattern</th>
+                <th>Meaning</th>
+                <th style="white-space:nowrap">Level</th>
+                <th style="white-space:nowrap">Status</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (GrammarListEntry e in _entries)
+            {
+                @if (_editing == e.Id)
+                {
+                    <tr>
+                        <td><input class="kn-input" @bind="_editPattern" /></td>
+                        <td><input class="kn-input" @bind="_editMeaning" /></td>
+                        <td>
+                            <select class="kn-select" @bind="_editLevel">
+                                @foreach (JlptLevel level in Enum.GetValues<JlptLevel>().OrderDescending())
+                                {
+                                    <option value="@level">@level</option>
+                                }
+                            </select>
+                        </td>
+                        <td></td>
+                        <td style="text-align:right;white-space:nowrap">
+                            <button class="kn-btn kn-btn-sm kn-btn-primary" @onclick="() => SaveEditAsync(e)">Save</button>
+                            <button class="kn-btn kn-btn-sm" @onclick="() => _editing = null">Cancel</button>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td class="kn-grammar-pattern">@e.Pattern</td>
+                        <td>@e.Meaning</td>
+                        <td>@e.Level</td>
+                        <td>
+                            @if (!_pruned)
+                            {
+                                <select class="kn-select" style="min-width:110px" value="@e.Status"
+                                        @onchange="ev => SetStatusAsync(e, Enum.Parse<GrammarStatus>(ev.Value?.ToString() ?? nameof(GrammarStatus.NotYet)))">
+                                    <option value="@GrammarStatus.Known">Known</option>
+                                    <option value="@GrammarStatus.Studying">Studying</option>
+                                    <option value="@GrammarStatus.NotYet">Not yet</option>
+                                </select>
+                            }
+                        </td>
+                        <td style="text-align:right;white-space:nowrap">
+                            @if (_pruned)
+                            {
+                                <button class="kn-btn kn-btn-sm" @onclick="() => SetPrunedAsync(e, false)">Restore</button>
+                            }
+                            else
+                            {
+                                <button class="kn-btn kn-btn-sm" @onclick="() => StartEditing(e)">Edit</button>
+                                <button class="kn-btn kn-btn-sm" @onclick="() => SetPrunedAsync(e, true)"
+                                        title="Take it off your list">Remove</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+            </tbody>
+        </table>
+    </div>
+    </div>
+}
+else
+{
+    <div class="kn-panel"><p class="kn-empty">@(_counts.Count == 0 && !_pruned ? "Your grammar list is empty." : "No grammar points match.")</p></div>
+}
+
+@code {
+    private List<GrammarListEntry> _entries = new();
+    private Dictionary<(JlptLevel Level, GrammarStatus Status), int> _counts = new();
+    private int _draftedNotAdded;
+    private string _search = string.Empty;
+    private string _level = string.Empty;
+    private string _status = string.Empty;
+    private bool _pruned;
+    private string _newPattern = string.Empty;
+    private string _newMeaning = string.Empty;
+    private JlptLevel _newLevel = JlptLevel.N4;
+    private int? _editing;
+    private string _editPattern = string.Empty;
+    private string _editMeaning = string.Empty;
+    private JlptLevel _editLevel;
+    private bool _busy;
+    private string? _message;
+    private bool _messageIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _entries = await Grammar.ListAsync(
+            Enum.TryParse(_level, out JlptLevel level) ? level : null,
+            Enum.TryParse(_status, out GrammarStatus status) ? status : null,
+            _pruned, _search);
+        _counts = await Grammar.CountsAsync();
+        _draftedNotAdded = await Grammar.DraftedNotAddedAsync();
+    }
+
+    private int Count(JlptLevel level, GrammarStatus status) => _counts.GetValueOrDefault((level, status));
+
+    private void Show(string? message, bool error = false)
+    {
+        _message = message;
+        _messageIsError = error;
+    }
+
+    private async Task SeedAsync()
+    {
+        _busy = true;
+        try {
+            int added = await Grammar.SeedAsync();
+            Show($"Added {added} grammar points.");
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        string? error = await Grammar.SaveAsync(0, _newPattern, _newMeaning, _newLevel);
+        Show(error ?? $"Added {_newPattern.Trim()}.", error is not null);
+        if (error is null) {
+            _newPattern = string.Empty;
+            _newMeaning = string.Empty;
+            await LoadAsync();
+        }
+    }
+
+    private async Task SetStatusAsync(GrammarListEntry entry, GrammarStatus status)
+    {
+        await Grammar.SetStatusAsync(new[] { entry.Id }, status);
+        entry.Status = status;
+        _counts = await Grammar.CountsAsync();
+    }
+
+    private async Task SetAllAsync(GrammarStatus status)
+    {
+        _busy = true;
+        try {
+            await Grammar.SetStatusAsync(_entries.Select(e => e.Id).ToList(), status);
+            Show($"Marked {_entries.Count} grammar points {status switch { GrammarStatus.NotYet => "not yet", _ => status.ToString().ToLowerInvariant() }}.");
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task SetPrunedAsync(GrammarListEntry entry, bool pruned)
+    {
+        await Grammar.SetPrunedAsync(entry.Id, pruned);
+        Show(pruned ? $"Removed {entry.Pattern}. It's under \"show removed\" if you want it back." : $"Restored {entry.Pattern}.");
+        await LoadAsync();
+    }
+
+    private void StartEditing(GrammarListEntry entry)
+    {
+        _editing = entry.Id;
+        _editPattern = entry.Pattern;
+        _editMeaning = entry.Meaning;
+        _editLevel = entry.Level;
+    }
+
+    private async Task SaveEditAsync(GrammarListEntry entry)
+    {
+        string? error = await Grammar.SaveAsync(entry.Id, _editPattern, _editMeaning, _editLevel);
+        Show(error, error is not null);
+        if (error is null) {
+            _editing = null;
+            await LoadAsync();
+        }
+    }
+}

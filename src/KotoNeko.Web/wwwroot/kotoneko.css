@@ -1107,3 +1107,33 @@ kbd {
 }
 
 .kn-conj-help-btn:hover { background: rgba(136, 45, 158, 0.08); }
+
+/* Practice sentences (word edit page) */
+.kn-practice-sentence {
+    border-top: 1px solid var(--kn-border, #e5e5e5);
+    padding: 0.8rem 0;
+}
+.kn-practice-sentence.kn-practice-unused { opacity: 0.6; }
+.kn-practice-text { font-size: 1.35rem; line-height: 2.2; }
+.kn-practice-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin: 0.2rem 0 0.4rem; }
+.kn-practice-unknown { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
+.kn-unknown-word {
+    display: inline-flex; gap: 0.35rem; align-items: center;
+    background: #fdecea; border-radius: 4px; padding: 0.1rem 0.4rem;
+}
+.kn-practice-english { margin-bottom: 0.4rem; }
+.kn-listening-sentence { font-size: 1.2rem; line-height: 2.1; margin-top: 0.3rem; }
+.kn-good-text { color: var(--kn-correct-dark); font-size: 0.85rem; }
+.kn-grammar-pattern { font-family: var(--kn-font-jp, inherit); font-size: 1.05rem; }
+
+/* Proofreading page: large sentences, one card each. */
+.kn-proofread { max-width: 760px; }
+.kn-proofread-intro { color: var(--kn-muted); }
+.kn-proofread-card {
+    background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    padding: 1rem 1.25rem; margin: 0 0 1rem;
+}
+.kn-proofread-text { font-size: 1.6rem; line-height: 1.6; margin-bottom: 0.4rem; }
+.kn-proofread-english { font-size: 1rem; margin-bottom: 0.4rem; }
+.kn-proofread-buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.8rem; }
+.kn-proofread-done { font-size: 1.2rem; }

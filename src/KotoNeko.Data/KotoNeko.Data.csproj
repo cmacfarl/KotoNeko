@@ -12,6 +12,11 @@
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The drafted grammar list, read by GrammarList.Drafted(). -->
+    <EmbeddedResource Include="Grammar\grammar-list.json" LogicalName="KotoNeko.Data.Grammar.grammar-list.json" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -1,0 +1,96 @@
+@page "/proofread"
+@inject PracticeSentenceService Sentences
+@inject IJSRuntime JS
+
+@* For a native speaker: is each new practice sentence natural Japanese? *@
+
+<PageTitle>文のチェック · KotoNeko</PageTitle>
+
+<div class="kn-proofread">
+    <h1>文のチェック</h1>
+    <p class="kn-proofread-intro">
+        Japanese practice sentences written for a learner. Is each one natural, correct Japanese?
+        自然で正しい日本語かどうか、見ていただけますか。
+    </p>
+
+    @if (_items is null)
+    {
+        <p class="kn-empty">Loading…</p>
+    }
+    else if (_items.Count == 0)
+    {
+        <p class="kn-proofread-done">
+            @(_checked > 0 ? $"Done: {_checked} checked. Thank you! ありがとうございました！" : "Nothing to check right now. ありがとうございます！")
+        </p>
+    }
+    else
+    {
+        <p class="kn-hint">@_items.Count to check</p>
+        @foreach (ProofreadItem item in _items)
+        {
+            <div class="kn-proofread-card">
+                <div class="kn-proofread-text" lang="ja">@item.Text</div>
+                @if (item.English.Length > 0)
+                {
+                    <div class="kn-proofread-english">@item.English</div>
+                }
+                <div class="kn-hint">Practising <span lang="ja">@item.Word</span> (@item.Reading) · @item.Meaning</div>
+
+                @if (_fixing == item.Id)
+                {
+                    <textarea class="kn-textarea" rows="3" placeholder="What's wrong, or how would you say it? (optional) どう直しますか？" @bind="_note"></textarea>
+                    <div class="kn-proofread-buttons">
+                        <button class="kn-btn kn-btn-danger" @onclick="() => DecideAsync(item, ok: false)">Send: needs a fix</button>
+                        <button class="kn-btn" @onclick="() => _fixing = null">Cancel</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="kn-proofread-buttons">
+                        @if (item.HasAudio)
+                        {
+                            <button class="kn-btn" @onclick="() => PlayAsync(item)">▶</button>
+                        }
+                        <button class="kn-btn kn-btn-primary" @onclick="() => DecideAsync(item, ok: true)">OK 👍</button>
+                        <button class="kn-btn" @onclick="() => StartFixing(item)">Needs a fix ✏️</button>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<ProofreadItem>? _items;
+    private int? _fixing;
+    private string _note = string.Empty;
+    private int _checked;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await Sentences.ToProofreadAsync();
+    }
+
+    private void StartFixing(ProofreadItem item)
+    {
+        _fixing = item.Id;
+        _note = string.Empty;
+    }
+
+    private async Task DecideAsync(ProofreadItem item, bool ok)
+    {
+        await Sentences.ProofreadAsync(item.Id, ok, ok ? null : _note);
+        _items?.Remove(item);
+        _fixing = null;
+        _checked++;
+    }
+
+    private async Task PlayAsync(ProofreadItem item)
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.playAudio", item.AudioUrl);
+        } catch {
+            // Nothing to do: the sentence can still be read.
+        }
+    }
+}

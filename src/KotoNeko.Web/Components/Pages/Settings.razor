@@ -3,6 +3,9 @@
 @inject DictionaryService DictionaryService
 @inject DictionaryImportService ImportService
 @inject BackupService Backups
+@inject KotoNeko.Web.Services.Llm.LlmService Llm
+@using KotoNeko.Core.Llm
+@using KotoNeko.Web.Services.Llm
 @implements IDisposable
 @using KotoNeko.Data.Dictionary
 @using KotoNeko.Data.Backup
@@ -192,6 +195,44 @@ else
     </div>
 
     <div class="kn-panel">
+        <h2>AI providers</h2>
+        <p class="kn-hint">
+            Used to generate practice sentences (later, to grade compositions). Keys are never shown here and never go in tracked files:
+            put them in <code>appsettings.Development.json</code> (git-ignored) or an environment variable, then restart.
+            Which provider and model each job uses is set in <code>appsettings.json</code> under <code>Llm:Jobs</code>.
+        </p>
+        <table class="kn-table">
+            <thead><tr><th>Provider</th><th>Status</th><th>How to set it up</th></tr></thead>
+            <tbody>
+            @foreach (LlmProviderStatus provider in Llm.Providers())
+            {
+                <tr>
+                    <td>@provider.Name</td>
+                    <td>@(provider.IsConfigured ? "✓ configured" : "not configured")</td>
+                    <td class="kn-hint">@provider.HowToConfigure</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p>
+            @foreach (LlmJob job in Enum.GetValues<LlmJob>())
+            {
+                @if (Llm.Route(job) is { } route)
+                {
+                    <span style="margin-right:1.5rem"><strong>@job</strong>: @route.Provider · @route.Model@(route.IsConfigured ? "" : " (not configured)")</span>
+                }
+            }
+        </p>
+        <p class="kn-hint">
+            Last 30 days: @_llmUsage.Calls.ToString("N0") call@(_llmUsage.Calls == 1 ? "" : "s")@(_llmUsage.Failed > 0 ? $" ({_llmUsage.Failed} without a usable answer)" : ""),
+            @_llmUsage.InputTokens.ToString("N0") tokens in, @_llmUsage.OutputTokens.ToString("N0") out.
+        </p>
+        <p>
+            <a href="/proofread">Proofreading page</a><span class="kn-hint">: new generated and written sentences, for a native speaker to mark OK or "needs a fix".</span>
+        </p>
+    </div>
+
+    <div class="kn-panel">
         <h2>Backups</h2>
         @if (Backups.Problem is string problem)
         {
@@ -267,6 +308,7 @@ else
     private bool _wasRunning;
     private int _choiceCount;
     private List<BackupFile> _backups = new();
+    private (int Calls, int Failed, long InputTokens, long OutputTokens) _llmUsage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -277,6 +319,7 @@ else
         ImportService.Changed += OnImportChanged;
         _backups = Backups.List();
         Backups.Changed += OnBackupChanged;
+        _llmUsage = await Llm.UsageAsync(30);
     }
 
     // The import runs on a background thread; redraw on this page's dispatcher, and

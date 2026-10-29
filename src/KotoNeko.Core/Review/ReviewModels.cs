@@ -33,9 +33,13 @@ public class ReviewQuestion
 
     /// <summary>
     /// For listening questions: other words that sound the same. A meaning of any
-    /// of them is accepted, since it is what the user actually heard.
+    /// of them is accepted, since it is what the user actually heard. Empty when
+    /// the question plays a <see cref="Sentence"/>: the context decides the meaning.
     /// </summary>
     public IReadOnlyList<Homophone> Homophones { get; init; } = Array.Empty<Homophone>();
+
+    /// <summary>For listening questions: the practice sentence played after the word, if any.</summary>
+    public ListeningSentence? Sentence { get; init; }
 
     /// <summary>True once answered correctly (and so cleared from the card).</summary>
     public bool Answered { get; set; }
@@ -87,6 +91,13 @@ public class ReviewQuestion
 }
 
 /// <summary>Another word with the same reading, accepted in a listening question.</summary>
+/// <summary>A practice sentence a listening question plays after the word.</summary>
+/// <param name="Pieces">The sentence with furigana where the reader still needs it, shown after answering.</param>
+public sealed record ListeningSentence(int PracticeSentenceId, IReadOnlyList<FuriganaPiece> Pieces, string English)
+{
+    public string AudioUrl => $"/api/practice-sentence/{PracticeSentenceId}/audio";
+}
+
 public sealed record Homophone(string Japanese, string Reading, string PrimaryMeaning, string? AlternateMeanings);
 
 /// <summary>

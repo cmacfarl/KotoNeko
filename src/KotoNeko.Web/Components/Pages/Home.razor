@@ -98,6 +98,32 @@ else
     </div>
 
     <div class="kn-panel">
+        <h2>Needs a practice sentence</h2>
+        @if (_summary.NeedsSentenceCount == 0)
+        {
+            <p class="kn-empty">Every word you're studying has a practice sentence listening can use.</p>
+        }
+        else
+        {
+            <p class="kn-hint">
+                @_summary.NeedsSentenceCount word@(_summary.NeedsSentenceCount == 1 ? "" : "s") you're studying
+                @(_summary.NeedsSentenceCount == 1 ? "has" : "have") no short, voiced practice sentence made only of words you know,
+                so listening plays the word alone. Due soonest first:
+            </p>
+            <ul class="kn-missed-list">
+                @foreach (NeedsSentenceItem item in _summary.NeedsSentence)
+                {
+                    <li class="kn-missed-item">
+                        <a class="kn-missed-jp kn-jp" href="/vocab/@item.VocabularyId">@item.Japanese</a>
+                        <span class="kn-missed-reading">@item.Reading</span>
+                        <span class="kn-missed-meaning">@item.Meaning</span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    <div class="kn-panel">
         <h2>Upcoming reviews</h2>
         @if (_summary.UpcomingSessions.Count == 0)
         {

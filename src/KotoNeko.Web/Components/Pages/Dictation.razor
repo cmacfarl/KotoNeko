@@ -25,8 +25,8 @@ else if (_items.Count == 0)
         @if (_allowance.SentencesAvailable == 0)
         {
             <h1>No sentences to dictate yet</h1>
-            <p>Dictation uses the context sentences of words you've learned, once the sentence has audio.
-               Add a context sentence and fetch its speech on a word's edit page.</p>
+            <p>Dictation uses the practice sentences of words you've learned (or their context sentence),
+               once the sentence has audio. Add one on a word's edit page.</p>
             <a class="kn-btn kn-btn-primary" href="/vocab">Vocabulary</a>
         }
         else if (_allowance.LeftToday == 0)
@@ -73,7 +73,8 @@ else
             }
             else if (_check is null)
             {
-                <div class="kn-prompt-type"><span class="strong">Dictation</span> · type what you hear</div>
+                <div class="kn-prompt-type"><span class="strong">Dictation</span> · type what you hear
+                    <span class="kn-hint">(full sentences up to @_allowance.LevelKana kana)</span></div>
             }
             else
             {
@@ -185,7 +186,7 @@ else
 
 @code {
     private bool _loading = true;
-    private DictationAllowance _allowance = new(0, 0, 0, false);
+    private DictationAllowance _allowance = new(0, 0, 0, false, DictationLadder.Rungs[0]);
     private List<DictationItem> _items = new();
     private int _index;
     private JapaneseText _typed = new(string.Empty, string.Empty);
@@ -221,9 +222,8 @@ else
         if (_index >= _items.Count) {
             return;
         }
-        int id = _items[_index].VocabularyId;
         try {
-            await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{id}/audio/sentence");
+            await JS.InvokeVoidAsync("kotoneko.playAudio", _items[_index].AudioUrl);
         } catch {
             // A failed clip leaves the sentence answerable: Tab tries again.
         }

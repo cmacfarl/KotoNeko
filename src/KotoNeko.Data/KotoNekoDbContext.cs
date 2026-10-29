@@ -1,4 +1,5 @@
 using KotoNeko.Core.Domain;
+using KotoNeko.Core.Llm;
 using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Data;
@@ -26,6 +27,10 @@ public class KotoNekoDbContext : DbContext
     public DbSet<ImeChoice> ImeChoices => Set<ImeChoice>();
     public DbSet<SentenceReading> SentenceReadings => Set<SentenceReading>();
     public DbSet<DictationAttempt> DictationAttempts => Set<DictationAttempt>();
+    public DbSet<PracticeSentence> PracticeSentences => Set<PracticeSentence>();
+    public DbSet<PracticeSentenceAudio> PracticeSentenceAudios => Set<PracticeSentenceAudio>();
+    public DbSet<GrammarListEntry> GrammarList => Set<GrammarListEntry>();
+    public DbSet<LlmCall> LlmCalls => Set<LlmCall>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -188,6 +193,57 @@ public class KotoNekoDbContext : DbContext
                 .HasForeignKey(e => e.StudyItemId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.PracticedAt);
+            entity.HasOne(e => e.PracticeSentence)
+                .WithMany()
+                .HasForeignKey(e => e.PracticeSentenceId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<PracticeSentence>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Text).HasMaxLength(PracticeSentence.MaxTextLength).IsRequired();
+            entity.Property(e => e.English).HasMaxLength(PracticeSentence.MaxEnglishLength).IsRequired();
+            entity.Property(e => e.ReviewNote).HasMaxLength(PracticeSentence.MaxNoteLength);
+            entity.Ignore(e => e.InUse);
+            entity.HasOne(e => e.Vocabulary)
+                .WithMany()
+                .HasForeignKey(e => e.VocabularyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Audio)
+                .WithOne(a => a.PracticeSentence)
+                .HasForeignKey<PracticeSentenceAudio>(a => a.PracticeSentenceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.VocabularyId, e.Status });
+        });
+
+        // The grammar list (not study items: Phase 4's grammar points link to it by SeedKey).
+        modelBuilder.Entity<GrammarListEntry>(entity =>
+        {
+            entity.ToTable("GrammarList");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SeedKey).HasMaxLength(GrammarListEntry.MaxKeyLength).UseCollation("utf8mb4_bin");
+            entity.Property(e => e.Pattern).HasMaxLength(GrammarListEntry.MaxPatternLength).IsRequired();
+            entity.Property(e => e.Meaning).HasMaxLength(GrammarListEntry.MaxMeaningLength).IsRequired();
+            entity.HasIndex(e => e.SeedKey).IsUnique();
+            entity.HasIndex(e => new { e.Level, e.SortOrder });
+        });
+
+        modelBuilder.Entity<LlmCall>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Provider).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Model).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.PromptVersion).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Error).HasMaxLength(500);
+            entity.HasIndex(e => e.CalledAt);
+        });
+
+        modelBuilder.Entity<PracticeSentenceAudio>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Audio).HasColumnType("longblob").IsRequired();
+            entity.HasIndex(e => e.PracticeSentenceId).IsUnique();
         });
 
         modelBuilder.Entity<DictionaryMeaning>(entity =>

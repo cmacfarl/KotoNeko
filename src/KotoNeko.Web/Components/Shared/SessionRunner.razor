@@ -86,6 +86,14 @@ else
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@vocab.MeaningsDisplay</span></div>
                     } else if (q.Type == QuestionType.Listening) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@vocab.MeaningsDisplay</span></div>
+                        @if (q.Sentence is { } heard) {
+                            <div class="kn-extra-row kn-listening-sentence">
+                                <FuriganaText Pieces="heard.Pieces" />
+                                @if (heard.English.Length > 0) {
+                                    <div class="kn-hint">@heard.English</div>
+                                }
+                            </div>
+                        }
                         @if (_heardHomophone is { } h) {
                             <div class="kn-extra-row kn-homophone">
                                 Same sound: you heard <span class="kn-jp">@h.Japanese</span> (@h.PrimaryMeaning).
@@ -238,9 +246,17 @@ else
         // Keep (or, after clicking the speaker, return) focus in the answer box.
         // Focus directly, without selecting: a queued focusSelect would run on the
         // next render, which is the user's first keystroke, and select that letter.
+        ReviewQuestion question = _displayQuestion;
         try {
             await JS.InvokeVoidAsync("kotoneko.focus", _inputRef);
             await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/word");
+            // Then the practice sentence, unless the question was answered meanwhile.
+            if (question.Sentence is { } sentence) {
+                await Task.Delay(600);
+                if (_mode == Mode.AwaitingInput && ReferenceEquals(_displayQuestion, question)) {
+                    await JS.InvokeVoidAsync("kotoneko.playAudio", sentence.AudioUrl);
+                }
+            }
         } catch {
             Console.WriteLine("Failed to play listening audio for " + vocab.Reading);
         }
@@ -351,7 +367,11 @@ else
                     Console.WriteLine("Starting word audio");
                     await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/word");
                     Console.WriteLine("Finished word audio");
-                    if (vocab.HasSentenceAudio) {
+                    if (question.Type == QuestionType.Listening && question.Sentence is { } sentence) {
+                        // The sentence the question played, not the context sentence.
+                        await Task.Delay(800);
+                        await JS.InvokeVoidAsync("kotoneko.playAudio", sentence.AudioUrl);
+                    } else if (vocab.HasSentenceAudio) {
                         await Task.Delay(800);
                         Console.WriteLine("Starting sentence audio");
                         await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/vocab/{vocab.Id}/audio/sentence");

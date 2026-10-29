@@ -256,6 +256,11 @@
         </div>
     </div>
 
+@if (Id is int savedId)
+{
+    <PracticeSentences VocabularyId="savedId" ContextSentence="@vocab.ContextSentence" />
+}
+
 @if (vocab.VerbClass != VerbClass.None)
 {
     <div class="kn-panel">

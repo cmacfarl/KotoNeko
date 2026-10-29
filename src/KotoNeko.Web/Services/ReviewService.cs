@@ -21,11 +21,13 @@ public class ReviewService
 {
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
     private readonly SentenceReadingService _readings;
+    private readonly PracticeSentenceService _sentences;
 
-    public ReviewService(IDbContextFactory<KotoNekoDbContext> factory, SentenceReadingService readings)
+    public ReviewService(IDbContextFactory<KotoNekoDbContext> factory, SentenceReadingService readings, PracticeSentenceService sentences)
     {
         _factory = factory;
         _readings = readings;
+        _sentences = sentences;
     }
 
     /// <summary>Count of items currently due for review.</summary>
@@ -98,10 +100,13 @@ public class ReviewService
         ILookup<string, Vocabulary> byReading = settings.ListeningEnabled
             ? await LoadHomophonesAsync(db, items)
             : NoHomophones;
+        Dictionary<int, ListeningSentence> listening = settings.ListeningEnabled
+            ? await ListeningSentencesAsync(items)
+            : new Dictionary<int, ListeningSentence>();
 
         Func<Vocabulary, IReadOnlyList<FuriganaPiece>?> sentences = await ContextSentencesAsync(items);
         List<ReviewCard> cards = items
-            .Select(v => BuildCard(v, v.Srs!, SessionKind.Review, settings, byReading, sentences(v)))
+            .Select(v => BuildCard(v, v.Srs!, SessionKind.Review, settings, byReading, sentences(v), listening.GetValueOrDefault(v.Id)))
             .ToList();
         return new ReviewSession(cards, SessionKind.Review, now, Random.Shared.Next(), PracticeOnlyTypes(settings));
     }
@@ -131,7 +136,7 @@ public class ReviewService
         Func<Vocabulary, IReadOnlyList<FuriganaPiece>?> sentences = await ContextSentencesAsync(items);
         List<ReviewCard> cards = items.Select(v => {
             SrsItem srs = v.Srs ?? new SrsItem { StudyItemId = v.Id, Stage = SrsStage.Locked };
-            return BuildCard(v, srs, SessionKind.Lesson, settings, NoHomophones, sentences(v));
+            return BuildCard(v, srs, SessionKind.Lesson, settings, NoHomophones, sentences(v), listeningSentence: null);
         }).ToList();
 
         return new ReviewSession(cards, SessionKind.Lesson, now, Random.Shared.Next(), PracticeOnlyTypes(settings));
@@ -191,6 +196,33 @@ public class ReviewService
     }
 
     /// <summary>
+    /// For each item that will get a listening question, one practice sentence to
+    /// play after the word: in use, voiced, and passing the check (only the word is
+    /// unknown, and it's short). Picked at random among those. Only stored readings
+    /// are used, so a session never waits on them; an item without such a sentence
+    /// keeps the word-only question.
+    /// </summary>
+    private async Task<Dictionary<int, ListeningSentence>> ListeningSentencesAsync(List<Vocabulary> items)
+    {
+        List<int> ids = items.Where(v => v.HasWordAudio).Select(v => v.Id).ToList();
+        Dictionary<int, List<CheckedSentence>> checkedFor = await _sentences.CheckedForAsync(ids, inUseOnly: true, ensureReadings: false);
+        if (checkedFor.Count == 0) {
+            return new Dictionary<int, ListeningSentence>();
+        }
+
+        HashSet<string> known = await _readings.KnownWordsAsync();
+        Dictionary<int, ListeningSentence> result = new();
+        foreach ((int id, List<CheckedSentence> list) in checkedFor) {
+            List<CheckedSentence> usable = list.Where(c => c.UsableForListening).ToList();
+            if (usable.Count > 0) {
+                CheckedSentence pick = usable[Random.Shared.Next(usable.Count)];
+                result[id] = new ListeningSentence(pick.Sentence.Id, pick.View!.ForReader(known), pick.Sentence.English);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Stored readings for the items' context sentences, with furigana only over
     /// words the user doesn't know yet. Only reads what is stored: sentences
     /// without readings yet are shown plain rather than holding up the session.
@@ -214,7 +246,7 @@ public class ReviewService
 
     private static ReviewCard BuildCard(
         Vocabulary v, SrsItem srs, SessionKind kind, StudySettings settings, ILookup<string, Vocabulary> byReading,
-        IReadOnlyList<FuriganaPiece>? contextSentence)
+        IReadOnlyList<FuriganaPiece>? contextSentence, ListeningSentence? listeningSentence)
     {
         // Any one of the stored meanings is accepted: the first is the primary,
         // the rest become accepted alternates for the grader.
@@ -262,17 +294,22 @@ public class ReviewService
             });
         }
 
-        // Hear the word, type its meaning. Reviews only: a lesson has just shown it.
+        // Hear the word (then a practice sentence, when it has a usable one), type its
+        // meaning. Reviews only: a lesson has just shown it. With a sentence, the
+        // context decides the meaning, so a homophone's meaning isn't accepted.
         if (kind == SessionKind.Review && settings.ListeningEnabled && v.HasWordAudio) {
             questions.Add(new ReviewQuestion() {
                 Type = QuestionType.Listening,
                 Prompt = "Listening",
                 ExpectedPrimary = primaryMeaning,
                 ExpectedAlternates = alternateMeanings,
-                Homophones = byReading[v.Reading]
-                    .Where(h => h.Id != v.Id)
-                    .Select(ToHomophone)
-                    .ToList(),
+                Sentence = listeningSentence,
+                Homophones = listeningSentence is not null
+                    ? Array.Empty<Homophone>()
+                    : byReading[v.Reading]
+                        .Where(h => h.Id != v.Id)
+                        .Select(ToHomophone)
+                        .ToList(),
             });
         }
 

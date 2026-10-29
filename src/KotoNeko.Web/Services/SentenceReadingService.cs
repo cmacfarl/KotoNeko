@@ -193,8 +193,9 @@ public sealed class SentenceReadingService
     }
 
     /// <summary>
-    /// Fill in readings for every vocabulary context sentence that lacks them, in the
-    /// background. Safe to call often: one run at a time, with at most one more queued.
+    /// Fill in readings for every context and practice sentence that lacks them, in
+    /// the background, and drop readings no sentence uses any more. Safe to call
+    /// often: one run at a time, with at most one more queued.
     /// </summary>
     public void RequestBackfill()
     {
@@ -216,6 +217,8 @@ public sealed class SentenceReadingService
                     .Where(v => v.ContextSentence != null && v.ContextSentence != "")
                     .Select(v => v.ContextSentence!)
                     .ToListAsync();
+                sentences.AddRange(await db.PracticeSentences.AsNoTracking().Select(s => s.Text).ToListAsync());
+                sentences = sentences.Distinct().ToList();
 
                 // Readings for sentences no item uses any more are dead weight.
                 HashSet<string> live = sentences.Select(Hash).ToHashSet();

@@ -35,9 +35,16 @@ public class DictationAttempt
 {
     public long Id { get; set; }
 
-    /// <summary>The vocabulary item whose context sentence was dictated.</summary>
+    /// <summary>The vocabulary item whose sentence was dictated.</summary>
     public int StudyItemId { get; set; }
     public StudyItem? StudyItem { get; set; }
+
+    /// <summary>The practice sentence dictated; null for a context sentence (or one since deleted).</summary>
+    public int? PracticeSentenceId { get; set; }
+    public PracticeSentence? PracticeSentence { get; set; }
+
+    /// <summary>The sentence's length in spoken kana; 0 for attempts from before this was recorded.</summary>
+    public int KanaLength { get; set; }
 
     public string Sentence { get; set; } = string.Empty;
 

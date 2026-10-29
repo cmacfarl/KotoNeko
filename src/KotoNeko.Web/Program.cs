@@ -5,6 +5,8 @@ using KotoNeko.Data.Dictionary;
 using KotoNeko.Jisho;
 using KotoNeko.Web.Components;
 using KotoNeko.Web.Services;
+using KotoNeko.Web.Services.Llm;
+using KotoNeko.Core.Llm;
 using Microsoft.EntityFrameworkCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -50,6 +52,29 @@ builder.Services.AddHttpClient(KnownWordsService.HttpClientName, client =>
     client.DefaultRequestHeaders.Add("User-Agent", "KotoNeko/1.0 (personal study app)");
 });
 builder.Services.AddScoped<KnownWordsService>();
+builder.Services.AddScoped<PracticeSentenceService>();
+builder.Services.AddScoped<GrammarService>();
+
+// LLM providers. Keys come from appsettings.Development.json (git-ignored) or the
+// environment, never tracked files; which provider and model each job uses is in
+// appsettings.json (Llm:Jobs). Every call is logged in LlmCalls.
+// Local models can be slow (a minute or more per answer), so the timeout is a setting.
+builder.Services.AddHttpClient("llm", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("Llm:TimeoutSeconds", 300));
+    client.DefaultRequestHeaders.Add("User-Agent", "KotoNeko/1.0 (personal study app)");
+});
+builder.Services.AddSingleton<ILlmProvider>(_ => new ClaudeProvider(
+    builder.Configuration["Llm:Claude:ApiKey"] is { Length: > 0 } claudeKey ? claudeKey : builder.Configuration["ANTHROPIC_API_KEY"],
+    builder.Configuration["Llm:Claude:Effort"]));
+builder.Services.AddSingleton<ILlmProvider>(sp => new GeminiProvider(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("llm"),
+    builder.Configuration["Llm:Gemini:ApiKey"] is { Length: > 0 } geminiKey ? geminiKey : builder.Configuration["GEMINI_API_KEY"]));
+builder.Services.AddSingleton<ILlmProvider>(sp => new LmStudioProvider(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("llm"),
+    builder.Configuration["Llm:LmStudio:BaseUrl"]));
+builder.Services.AddSingleton<LlmService>();
+builder.Services.AddScoped<SentenceGenerationService>();
 
 // Sentence readings (furigana) are generated in the background, never mid-review.
 builder.Services.AddSingleton<SentenceReadingService>();
@@ -164,6 +189,11 @@ app.MapGet("/api/vocab/{id:int}/audio/sentence", async (int id, IDbContextFactor
         ? Results.File(bytes, "audio/mpeg")
         : Results.NotFound();
 });
+
+app.MapGet("/api/practice-sentence/{id:int}/audio", async (int id, PracticeSentenceService sentences) =>
+    await sentences.GetAudioAsync(id) is { Length: > 0 } bytes
+        ? Results.File(bytes, "audio/mpeg")
+        : Results.NotFound());
 
 app.MapGet("/api/conjugation/{id:int}/audio", async (int id, IDbContextFactory<KotoNekoDbContext> factory) =>
 {
