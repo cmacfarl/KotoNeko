@@ -29,6 +29,8 @@ else
 {
     ReviewCard card = _displayCard;
     ReviewQuestion q = _displayQuestion;
+    // Only vocabulary cards exist so far; other kinds will get their own prompt.
+    Vocabulary vocab = (Vocabulary)card.Item;
 
     <div class="kn-quiz">
         <div class="kn-quiz-header">
@@ -48,10 +50,10 @@ else
                     <div class="kn-prompt-type"><span class="strong">Japanese reading</span></div>
                 } else {
                     <div class="kn-prompt-word">
-                        @if (card.Vocabulary.ShowsFurigana) {
-                            <ruby>@card.Vocabulary.Japanese<rt>@card.Vocabulary.Reading</rt></ruby>
+                        @if (vocab.ShowsFurigana) {
+                            <ruby>@vocab.Japanese<rt>@vocab.Reading</rt></ruby>
                         } else {
-                            @card.Vocabulary.Japanese
+                            @vocab.Japanese
                         }
                     </div>
                     <div class="kn-prompt-type">
@@ -63,26 +65,26 @@ else
             @if (_mode == Mode.ShowingResult || _mode == Mode.PlayingAudio) {
                 <div class="kn-extra">
                     @if (q.Type == QuestionType.Reading) {
-                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@card.Vocabulary.Reading</span></div>
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@vocab.Reading</span></div>
                     } else if (q.Type == QuestionType.Conjugation) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">@_lastCorrectAnswer</span></div>
                     } else if (q.Type == QuestionType.Meaning) {
-                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@card.Vocabulary.MeaningsDisplay</span></div>
+                        <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp">@vocab.MeaningsDisplay</span></div>
                     } else if (q.Type == QuestionType.Production) {
                         <div class="kn-extra-row"><span class="kn-extra-label"></span> <span class="kn-jp-reading">
-                            @if (card.Vocabulary.HasKanji) {
-                                <ruby>@card.Vocabulary.Japanese<rt>@card.Vocabulary.Reading</rt></ruby>
+                            @if (vocab.HasKanji) {
+                                <ruby>@vocab.Japanese<rt>@vocab.Reading</rt></ruby>
                             } else {
-                                @card.Vocabulary.Japanese
+                                @vocab.Japanese
                             }
                         </span></div>
                     }
 
-                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.ContextSentence)) {
-                        <div class="kn-extra-row">@card.Vocabulary.ContextSentence</div>
+                    @if (!string.IsNullOrWhiteSpace(vocab.ContextSentence)) {
+                        <div class="kn-extra-row">@vocab.ContextSentence</div>
                     }
-                    @if (!string.IsNullOrWhiteSpace(card.Vocabulary.Memo)) {
-                        <div class="kn-extra-row">@card.Vocabulary.Memo</div>
+                    @if (!string.IsNullOrWhiteSpace(vocab.Memo)) {
+                        <div class="kn-extra-row">@vocab.Memo</div>
                     }
                 </div>
             } else {
@@ -110,7 +112,7 @@ else
         </div>
 
         <div class="kn-answer-footer">
-            <button class="kn-undo-btn" disabled="@(!Session.CanUndo)" @onclick="UndoAsync" title="Undo last answer (fix a typo)">
+            <button class="kn-undo-btn" disabled="@(!CanUndo)" @onclick="UndoAsync" title="Undo last answer (fix a typo)">
                 ↶ Undo
             </button>
             @if (_mode == Mode.ShowingResult && q.Type == QuestionType.Conjugation)
@@ -127,7 +129,7 @@ else
                     <ConjugationHelpPanel
                         Form="q.Form.Value"
                         Polarity="q.Polarity.Value"
-                        HighlightClass="card.Vocabulary.VerbClass"
+                        HighlightClass="vocab.VerbClass"
                         OnDismiss="CloseHelpPanel" />
                 </div>
             </div>
@@ -163,7 +165,11 @@ else
     private ElementReference _helpPanelRef;
     private DotNetObjectReference<SessionRunner>? _dotNetRef;
     private bool _kanaAttached;
-    private readonly Stack<string> _typedHistory = new();
+    private string _lastTyped = string.Empty;
+
+    // Undo applies only to the answer whose result is on screen: not while its
+    // audio is still playing, and not once the user has moved on (which commits it).
+    private bool CanUndo => _mode == Mode.ShowingResult && Session is { CanUndo: true };
 
     private int ProgressPercent =>
         Session is null || Session.TotalCards == 0
@@ -211,19 +217,19 @@ else
 
         if (_mode == Mode.ShowingResult) {
             if (_showConjHelp) { CloseHelpPanel(); return; }
-            Advance();
+            await AdvanceAsync();
             return;
         }
 
         await SubmitAsync();
     }
 
-    private void OnHelpPanelKeyDown(KeyboardEventArgs e) {
+    private async Task OnHelpPanelKeyDown(KeyboardEventArgs e) {
         if (e.Key is "Escape" or "?") {
             CloseHelpPanel();
         } else if (e.Key == "Enter") {
             CloseHelpPanel();
-            Advance();
+            await AdvanceAsync();
         }
     }
 
@@ -262,18 +268,17 @@ else
         }
 
         // Committed answer: remember the typed text so Undo can restore it.
-        _typedHistory.Push(answer);
+        _lastTyped = answer;
         _closeHint = null;
         _lastJudgment = outcome.Judgment;
         _lastCorrectAnswer = outcome.CorrectAnswer;
         _mode = Mode.PlayingAudio;
 
-        if (outcome.Judgment == AnswerJudgment.Correct && _displayCard is not null) {
+        if (outcome.Judgment == AnswerJudgment.Correct && _displayCard?.Item is Vocabulary vocab) {
         
             StateHasChanged();
             await Task.Yield();
             
-            Vocabulary vocab = _displayCard.Vocabulary;
             try {
                 if (question.Type == QuestionType.Conjugation && question.ConjugationId is int conjId) {
                     await JS.InvokeVoidAsync("kotoneko.playAudio", $"/api/conjugation/{conjId}/audio"); 
@@ -292,21 +297,15 @@ else
                 Console.WriteLine("Failed to play audio for " + vocab.Reading);
             }
         }
-        if (outcome.CardFinalised)
-            await PersistIncrementalAsync();
-
         _mode = Mode.ShowingResult;
     }
 
-    private async Task PersistIncrementalAsync()
-    {
-        if (Session is null) return;
-        ReviewSession.PendingResults results = Session.BuildIncrementalResults();
-        if (results.SrsItems.Count > 0 || results.Logs.Count > 0)
-            await ReviewService.PersistAsync(results);
-    }
+    private async Task AdvanceAsync() {
+        // Moving on makes the shown answer permanent: commit it (which ends its
+        // undo window) and persist any card it finished, so progress survives a
+        // crash or a closed tab.
+        ReviewSession.PendingResults? results = Session?.CommitPendingResults();
 
-    private void Advance() {
         _mode = Mode.AwaitingInput;
         _input = string.Empty;
         answer = string.Empty;
@@ -316,16 +315,22 @@ else
         _displayCard = Session?.CurrentCard;
         _displayQuestion = Session?.CurrentQuestion;
         needsClear = true;
+
+        // The next question renders as soon as this yields; the write happens behind it.
+        if (results is { } r && (r.SrsItems.Count > 0 || r.Logs.Count > 0)) {
+            await ReviewService.PersistAsync(r);
+        }
     }
 
     private async Task UndoAsync() {
-        if (Session is null || !Session.CanUndo) {
+        if (Session is null || !CanUndo) {
             return;
         }
 
         Session.Undo();
-        string restored = _typedHistory.Count > 0 ? _typedHistory.Pop() : string.Empty;
-        _input = restored;
+        _input = _lastTyped;
+        _displayCard = Session.CurrentCard;
+        _displayQuestion = Session.CurrentQuestion;
         _mode = Mode.AwaitingInput;
         _closeHint = "Undone — fix your answer and submit again.";
         _focusQueued = true;
@@ -351,7 +356,7 @@ else
         }
 
         _persisted = true;
-        await ReviewService.PersistAsync(Session.BuildPendingResults());
+        await ReviewService.PersistAsync(Session.CommitPendingResults());
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

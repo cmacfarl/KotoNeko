@@ -1,5 +1,18 @@
 namespace KotoNeko.Core.Domain;
 
+/// <summary>The kind of a <see cref="StudyItem"/>.</summary>
+public enum StudyItemKind
+{
+    /// <summary>A word: <see cref="Domain.Vocabulary"/>.</summary>
+    Vocabulary = 0,
+
+    /// <summary>A single kanji (planned; no derived type yet).</summary>
+    Kanji = 1,
+
+    /// <summary>A grammar point (planned; no derived type yet).</summary>
+    Grammar = 2,
+}
+
 /// <summary>
 /// The grammatical class of a verb, which determines how it conjugates.
 /// </summary>

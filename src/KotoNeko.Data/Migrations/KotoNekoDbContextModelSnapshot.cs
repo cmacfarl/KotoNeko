@@ -101,7 +101,7 @@ namespace KotoNeko.Data.Migrations
                     b.Property<int>("StageAtReview")
                         .HasColumnType("int");
 
-                    b.Property<int>("VocabularyId")
+                    b.Property<int>("StudyItemId")
                         .HasColumnType("int");
 
                     b.Property<bool>("WasCorrect")
@@ -111,7 +111,7 @@ namespace KotoNeko.Data.Migrations
 
                     b.HasIndex("ReviewedAt");
 
-                    b.HasIndex("VocabularyId");
+                    b.HasIndex("StudyItemId");
 
                     b.HasIndex("WasCorrect");
 
@@ -172,11 +172,11 @@ namespace KotoNeko.Data.Migrations
                     b.Property<int>("Stage")
                         .HasColumnType("int");
 
+                    b.Property<int>("StudyItemId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("UnlockedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<int>("VocabularyId")
-                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -184,13 +184,13 @@ namespace KotoNeko.Data.Migrations
 
                     b.HasIndex("Stage");
 
-                    b.HasIndex("VocabularyId")
+                    b.HasIndex("StudyItemId")
                         .IsUnique();
 
                     b.ToTable("SrsItems");
                 });
 
-            modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>
+            modelBuilder.Entity("KotoNeko.Core.Domain.StudyItem", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -198,62 +198,24 @@ namespace KotoNeko.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AlternateReadings")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)")
-                        .HasDefaultValue("");
-
-                    b.Property<string>("ContextSentence")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<bool>("DisplayFurigana")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("HasSentenceAudio")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("HasWordAudio")
-                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsAsleep")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<string>("Japanese")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<string>("Memo")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<bool>("PlaySentenceAudioInReview")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Reading")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<int?>("SourceMaterialId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("VerbClass")
+                    b.Property<int>("Kind")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("IsAsleep");
 
-                    b.HasIndex("SourceMaterialId");
+                    b.HasIndex("Kind");
 
-                    b.ToTable("Vocabulary");
+                    b.ToTable("StudyItems", (string)null);
+
+                    b.UseTptMappingStrategy();
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.VocabularyAudio", b =>
@@ -308,6 +270,58 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("VocabularyMeanings");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>
+                {
+                    b.HasBaseType("KotoNeko.Core.Domain.StudyItem");
+
+                    b.Property<string>("AlternateReadings")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasDefaultValue("");
+
+                    b.Property<string>("ContextSentence")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool>("DisplayFurigana")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("HasSentenceAudio")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("HasWordAudio")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Japanese")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Memo")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool>("PlaySentenceAudioInReview")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Reading")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int?>("SourceMaterialId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VerbClass")
+                        .HasColumnType("int");
+
+                    b.HasIndex("SourceMaterialId");
+
+                    b.ToTable("Vocabulary", (string)null);
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.ConjugatedAudio", b =>
                 {
                     b.HasOne("KotoNeko.Core.Domain.Conjugation", "Conjugation")
@@ -332,34 +346,24 @@ namespace KotoNeko.Data.Migrations
 
             modelBuilder.Entity("KotoNeko.Core.Domain.ReviewLog", b =>
                 {
-                    b.HasOne("KotoNeko.Core.Domain.Vocabulary", "Vocabulary")
+                    b.HasOne("KotoNeko.Core.Domain.StudyItem", "StudyItem")
                         .WithMany("ReviewLogs")
-                        .HasForeignKey("VocabularyId")
+                        .HasForeignKey("StudyItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Vocabulary");
+                    b.Navigation("StudyItem");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.SrsItem", b =>
                 {
-                    b.HasOne("KotoNeko.Core.Domain.Vocabulary", "Vocabulary")
+                    b.HasOne("KotoNeko.Core.Domain.StudyItem", "StudyItem")
                         .WithOne("Srs")
-                        .HasForeignKey("KotoNeko.Core.Domain.SrsItem", "VocabularyId")
+                        .HasForeignKey("KotoNeko.Core.Domain.SrsItem", "StudyItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Vocabulary");
-                });
-
-            modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>
-                {
-                    b.HasOne("KotoNeko.Core.Domain.SourceMaterial", "SourceMaterial")
-                        .WithMany("Vocabulary")
-                        .HasForeignKey("SourceMaterialId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("SourceMaterial");
+                    b.Navigation("StudyItem");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.VocabularyAudio", b =>
@@ -384,6 +388,22 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("Vocabulary");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.StudyItem", null)
+                        .WithOne()
+                        .HasForeignKey("KotoNeko.Core.Domain.Vocabulary", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("KotoNeko.Core.Domain.SourceMaterial", "SourceMaterial")
+                        .WithMany("Vocabulary")
+                        .HasForeignKey("SourceMaterialId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("SourceMaterial");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.Conjugation", b =>
                 {
                     b.Navigation("ConjugatedAudio");
@@ -394,6 +414,13 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("Vocabulary");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.StudyItem", b =>
+                {
+                    b.Navigation("ReviewLogs");
+
+                    b.Navigation("Srs");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>
                 {
                     b.Navigation("Audio");
@@ -401,10 +428,6 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("Conjugations");
 
                     b.Navigation("Meanings");
-
-                    b.Navigation("ReviewLogs");
-
-                    b.Navigation("Srs");
                 });
 #pragma warning restore 612, 618
         }

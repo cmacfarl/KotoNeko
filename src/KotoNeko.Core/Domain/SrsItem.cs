@@ -1,15 +1,15 @@
 namespace KotoNeko.Core.Domain;
 
 /// <summary>
-/// The SRS scheduling state for a single vocabulary item. Created when the item
-/// is unlocked via a lesson.
+/// The SRS scheduling state for a single study item. Created when the item is
+/// unlocked via a lesson.
 /// </summary>
 public class SrsItem
 {
     public int Id { get; set; }
 
-    public int VocabularyId { get; set; }
-    public Vocabulary? Vocabulary { get; set; }
+    public int StudyItemId { get; set; }
+    public StudyItem? StudyItem { get; set; }
 
     public SrsStage Stage { get; set; } = SrsStage.Locked;
 
