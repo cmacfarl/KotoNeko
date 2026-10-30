@@ -13,6 +13,9 @@ public enum LlmJob
 
     /// <summary>"Why?" follow-ups (Phase 5).</summary>
     Explain = 2,
+
+    /// <summary>Pre-labelling the grading test set (several models vote; people settle disagreements).</summary>
+    Label = 3,
 }
 
 /// <summary>How an LLM call ended, for the call log.</summary>
@@ -36,7 +39,8 @@ public enum LlmOutcome
 /// <summary>
 /// One structured-output request: a system prompt, a user prompt and the JSON schema
 /// the answer must follow. <see cref="PromptVersion"/> goes in the call log, so old
-/// results can be traced to the prompt that produced them.
+/// results can be traced to the prompt that produced them. <see cref="Effort"/> (low,
+/// medium, high) overrides the provider's configured effort or thinking level.
 /// </summary>
 public sealed record LlmRequest(
     LlmJob Job,
@@ -45,7 +49,8 @@ public sealed record LlmRequest(
     string Prompt,
     string SchemaName,
     JsonObject Schema,
-    int MaxTokens = 8000);
+    int MaxTokens = 8000,
+    string? Effort = null);
 
 /// <summary>A provider's answer: the JSON text and the tokens it took.</summary>
 public sealed record LlmResponse(string Json, int InputTokens, int OutputTokens);
@@ -60,6 +65,11 @@ public sealed class LlmException : Exception
     }
 
     public LlmOutcome Outcome { get; }
+
+    /// <summary>Tokens the call used before failing (an answer in the wrong shape still costs).</summary>
+    public int InputTokens { get; set; }
+
+    public int OutputTokens { get; set; }
 }
 
 /// <summary>One LLM provider (Claude, Gemini, LM Studio): sends a request, returns JSON.</summary>

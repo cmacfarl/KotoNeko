@@ -1,0 +1,32 @@
+{
+  "_about": "How each grading candidate was drafted, by Claude (claude-opus-5-5). Used only as one pre-labelling vote, attributed to that model; never shown while labelling.",
+  "noni-01": "Correct", "noni-02": "Correct", "noni-03": "Correct", "noni-04": "Correct",
+  "noni-05": "SubtlyWrong", "noni-06": "ClearlyWrong", "noni-07": "SubtlyWrong", "noni-08": "SubtlyWrong",
+  "noni-09": "CorrectButUnnatural", "noni-10": "Correct", "noni-11": "Correct", "noni-12": "ClearlyWrong",
+  "noni-13": "Correct", "noni-14": "SubtlyWrong", "noni-15": "Correct", "noni-16": "Correct",
+  "noni-17": "ClearlyWrong", "noni-18": "Correct", "noni-19": "SubtlyWrong", "noni-20": "Correct",
+
+  "youni-01": "Correct", "youni-02": "Correct", "youni-03": "Correct", "youni-04": "SubtlyWrong",
+  "youni-05": "SubtlyWrong", "youni-06": "Correct", "youni-07": "Correct", "youni-08": "Correct",
+  "youni-09": "ClearlyWrong", "youni-10": "SubtlyWrong", "youni-11": "Correct", "youni-12": "Correct",
+  "youni-13": "Correct", "youni-14": "Correct", "youni-15": "CorrectButUnnatural", "youni-16": "SubtlyWrong",
+  "youni-17": "Correct", "youni-18": "Correct", "youni-19": "ClearlyWrong", "youni-20": "CorrectButUnnatural",
+
+  "teshimau-01": "Correct", "teshimau-02": "Correct", "teshimau-03": "Correct", "teshimau-04": "Correct",
+  "teshimau-05": "Correct", "teshimau-06": "Correct", "teshimau-07": "Correct", "teshimau-08": "ClearlyWrong",
+  "teshimau-09": "ClearlyWrong", "teshimau-10": "SubtlyWrong", "teshimau-11": "SubtlyWrong", "teshimau-12": "Correct",
+  "teshimau-13": "Correct", "teshimau-14": "Correct", "teshimau-15": "ClearlyWrong", "teshimau-16": "Correct",
+  "teshimau-17": "Correct", "teshimau-18": "SubtlyWrong", "teshimau-19": "Correct", "teshimau-20": "Correct",
+
+  "tara-01": "Correct", "tara-02": "Correct", "tara-03": "Correct", "tara-04": "Correct",
+  "tara-05": "Correct", "tara-06": "Correct", "tara-07": "Correct", "tara-08": "Correct",
+  "tara-09": "ClearlyWrong", "tara-10": "ClearlyWrong", "tara-11": "Correct", "tara-12": "Correct",
+  "tara-13": "Correct", "tara-14": "Correct", "tara-15": "SubtlyWrong", "tara-16": "Correct",
+  "tara-17": "Correct", "tara-18": "SubtlyWrong", "tara-19": "SubtlyWrong", "tara-20": "SubtlyWrong",
+
+  "souda-01": "Correct", "souda-02": "Correct", "souda-03": "Correct", "souda-04": "SubtlyWrong",
+  "souda-05": "SubtlyWrong", "souda-06": "Correct", "souda-07": "Correct", "souda-08": "Correct",
+  "souda-09": "Correct", "souda-10": "ClearlyWrong", "souda-11": "Correct", "souda-12": "Correct",
+  "souda-13": "SubtlyWrong", "souda-14": "Correct", "souda-15": "SubtlyWrong", "souda-16": "Correct",
+  "souda-17": "ClearlyWrong", "souda-18": "Correct", "souda-19": "SubtlyWrong", "souda-20": "CorrectButUnnatural"
+}

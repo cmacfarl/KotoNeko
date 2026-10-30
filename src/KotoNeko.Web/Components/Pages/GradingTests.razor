@@ -1,0 +1,270 @@
+@page "/grading-tests"
+@inject GradingTestService Tests
+
+<PageTitle>Grading test set · KotoNeko</PageTitle>
+
+<h1>Grading test set</h1>
+
+<p class="kn-hint">
+    The answer key for testing the AI grader before it's trusted with your grammar reviews. Each sentence is a learner's attempt
+    at a grammar point, written for the situation shown. Pre-labelling (<code>dotnet run --project tests/KotoNeko.Evals -- --prelabel</code>)
+    has several models label every sentence: where they all agree, the sentence gets an <strong>AI-agreed</strong> label; where they
+    disagree, it waits under <strong>Needs a person</strong> for you or your tutor. A grader's headline score uses only labels a person
+    gave, and a model is never scored on a sentence it helped label. What the models said stays hidden unless you ask.
+</p>
+
+<div class="kn-panel">
+    <p>
+        <strong>Correct</strong>: the grammar point is used correctly.
+        <strong>Subtly wrong</strong>: looks plausible, but misuses it.
+        <strong>Clearly wrong</strong>: broken form or meaning.
+        <strong>Correct but unnatural</strong>: grammatical, but not how a native speaker would say it (passes, with a note).
+        <strong>Not useful</strong>: ambiguous, or the situation doesn't fit; left out of scoring.
+        Mistakes that don't involve the grammar point (a wrong particle elsewhere, say) don't make a sentence wrong.
+    </p>
+
+    @if (_points.Count > 0)
+    {
+        <table class="kn-table">
+            <thead><tr><th>Grammar point</th><th>By a person</th><th>AI-agreed</th><th>Needs a person</th><th>Not labelled yet</th><th>Not useful</th></tr></thead>
+            <tbody>
+            @foreach (GradingTestPoint p in _points)
+            {
+                <tr>
+                    <td><span style="font-size:1.1rem">@p.Pattern</span> <span class="kn-hint">@p.Meaning</span></td>
+                    <td>@p.ByPerson</td>
+                    <td>@p.AiAgreed</td>
+                    <td>@p.NeedPerson</td>
+                    <td>@p.NotYet</td>
+                    <td>@p.Excluded</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    @if (_notAdded > 0)
+    {
+        <button class="kn-btn kn-btn-primary" @onclick="SeedAsync" disabled="@_busy">Add @_notAdded drafted sentences</button>
+        <p class="kn-hint">About 20 per grammar point: 〜のに, 〜ように, 〜てしまう, 〜たら and 〜そうだ. They come with no suggested label, in shuffled order.</p>
+    }
+</div>
+
+@if (_points.Count > 0)
+{
+    <div class="kn-toolbar">
+        <select class="kn-select" style="max-width:260px" @bind="_filter" @bind:after="LoadAsync">
+            <option value="">All grammar points</option>
+            @foreach (GradingTestPoint p in _points)
+            {
+                <option value="@p.GrammarKey">@p.Pattern</option>
+            }
+        </select>
+        <select class="kn-select" style="max-width:220px" @bind="_show" @bind:after="LoadAsync">
+            <option value="@GradingTestFilter.NeedsPerson">Needs a person</option>
+            <option value="@GradingTestFilter.NotLabelled">Not labelled yet</option>
+            <option value="@GradingTestFilter.AiAgreed">AI-agreed (to spot-check)</option>
+            <option value="@GradingTestFilter.ByPerson">Labelled by a person</option>
+            <option value="@GradingTestFilter.All">All</option>
+        </select>
+        <span class="kn-hint">@_items.Count shown</span>
+    </div>
+
+    @foreach (GradingTestItem item in _items)
+    {
+        <div class="kn-panel kn-grading-item">
+            <div class="kn-hint">
+                @item.Pattern · @item.Meaning
+                @if (item.Label is { } agreed && item.LabelSource == LabelSource.AiAgreed && !item.Excluded)
+                {
+                    <span class="kn-pill kn-pill-jlpt">AI-agreed: @agreed.Display()</span>
+                }
+                else if (item.Label is null && item.NeedsPerson && !item.Excluded)
+                {
+                    <span class="kn-pill kn-pill-donotuse">needs a person</span>
+                }
+            </div>
+            <div class="kn-grading-task">@item.Task</div>
+            <div class="kn-grading-sentence" lang="ja">@item.Sentence</div>
+            <div class="kn-toolbar">
+                @foreach (GradingLabel label in Enum.GetValues<GradingLabel>())
+                {
+                    <button class="kn-btn @(item.Label == label && item.LabelSource == LabelSource.Person && !item.Excluded ? "kn-btn-primary" : "")"
+                            @onclick="() => SetAsync(item, label, excluded: false)">@label.Display()</button>
+                }
+                <button class="kn-btn @(item.Excluded ? "kn-btn-primary" : "")" @onclick="() => SetAsync(item, null, excluded: true)">Not useful</button>
+            </div>
+            <input class="kn-input" placeholder="Note (optional): why, or what your tutor said" value="@item.Note"
+                   @onchange="e => SetNoteAsync(item, e.Value?.ToString())" />
+            @if (_votes.TryGetValue(item.Id, out List<GradingPrelabel>? votes))
+            {
+                <div class="kn-grading-votes">
+                    @if (votes.Count == 0)
+                    {
+                        <span class="kn-hint">No votes yet.</span>
+                    }
+                    @foreach (GradingPrelabel vote in votes)
+                    {
+                        <div>
+                            <strong>@(vote.PromptVersion == KotoNeko.Core.Llm.Prelabelling.DraftedVersion ? $"How it was drafted ({vote.Model})" : $"{vote.Provider} · {vote.Model}{(vote.Effort is null ? "" : $" ({vote.Effort})")}")</strong>:
+                            @vote.Label.Display()
+                            @if (vote.PromptVersion != KotoNeko.Core.Llm.Prelabelling.DraftedVersion)
+                            {
+                                <span class="kn-hint"> · @vote.Explanation</span>
+                            }
+                        </div>
+                    }
+                    <button class="kn-btn kn-btn-sm" @onclick="() => _votes.Remove(item.Id)">Hide</button>
+                </div>
+            }
+            else
+            {
+                <button class="kn-btn kn-btn-sm" style="margin-top:0.4rem" @onclick="() => ShowVotesAsync(item)">Show what the models said</button>
+            }
+        </div>
+    }
+
+    <div class="kn-panel">
+        <h2>Add a sentence of your own</h2>
+        <div class="kn-toolbar">
+            <select class="kn-select" style="max-width:200px" @bind="_newPoint">
+                @foreach (GradingTestPoint p in _points)
+                {
+                    <option value="@p.GrammarKey">@p.Pattern</option>
+                }
+            </select>
+            <input class="kn-input" style="max-width:320px" placeholder="Situation (in English)" @bind="_newTask" />
+        </div>
+        <div class="kn-form-row">
+            <JapaneseInput @ref="_input" Placeholder="The sentence…" OnChanged="t => _newSentence = t.Text" OnSubmit="AddAsync" />
+        </div>
+        <button class="kn-btn" @onclick="AddAsync" disabled="@_busy">Add</button>
+        @if (_message is not null)
+        {
+            <p class="kn-hint">@_message</p>
+        }
+    </div>
+
+    <div class="kn-panel">
+        <h2>Eval runs</h2>
+        @if (_runs.Count == 0)
+        {
+            <p class="kn-empty">No runs yet. Run the eval from a terminal: <code>dotnet run --project tests/KotoNeko.Evals</code>.</p>
+        }
+        else
+        {
+            <table class="kn-table">
+                <thead><tr><th>When</th><th>Provider · model</th><th>Prompt</th><th>Person-labelled</th><th>Agreement</th><th>False correction</th><th>False pass</th><th>AI-agreed consistency</th></tr></thead>
+                <tbody>
+                @foreach (GradingEvalRun run in _runs)
+                {
+                    <tr>
+                        <td>@run.StartedAt.ToLocalTime().ToString("MMM d, HH:mm")</td>
+                        <td>@run.Provider · @run.Model@(run.Effort is null ? "" : $" ({run.Effort})")</td>
+                        <td>@run.PromptVersion</td>
+                        <td>@run.Graded</td>
+                        <td>@(run.Graded > 0 ? run.Agreement.ToString("P0") : "n/a")</td>
+                        <td>@(run.Graded > 0 ? run.FalseCorrectionRate.ToString("P0") : "n/a")</td>
+                        <td>@(run.Graded > 0 ? run.FalsePassRate.ToString("P0") : "n/a")</td>
+                        <td>@(run.AiAgreedGraded > 0 ? $"{run.AiAgreedAgreement:P0} of {run.AiAgreedGraded}" : "n/a")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            <p class="kn-hint">
+                The headline (agreement, false correction, false pass) uses only sentences a person labelled. AI-agreed consistency is on
+                the easier sentences the models all agreed on, leaving out ones the grader's own model helped label: it isn't accuracy.
+            </p>
+        }
+    </div>
+}
+
+@code {
+    private List<GradingTestPoint> _points = new();
+    private List<GradingTestItem> _items = new();
+    private List<GradingEvalRun> _runs = new();
+    private int _notAdded;
+    private string _filter = string.Empty;
+    private GradingTestFilter _show = GradingTestFilter.NotLabelled;
+    private readonly Dictionary<int, List<GradingPrelabel>> _votes = new();
+    private bool _chosenDefault;
+    private string _newPoint = string.Empty;
+    private string _newTask = string.Empty;
+    private string _newSentence = string.Empty;
+    private JapaneseInput? _input;
+    private bool _busy;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _runs = await Tests.RunsAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _points = await Tests.PointsAsync();
+        _notAdded = await Tests.CandidatesNotAddedAsync();
+        if (!_chosenDefault) {
+            // Open on the disagreements when there are any: that's the work left for a person.
+            _chosenDefault = true;
+            _show = _points.Sum(p => p.NeedPerson) > 0 ? GradingTestFilter.NeedsPerson : GradingTestFilter.NotLabelled;
+        }
+        _items = await Tests.ListAsync(_filter.Length > 0 ? _filter : null, _show);
+        if (_newPoint.Length == 0 && _points.Count > 0) {
+            _newPoint = _points[0].GrammarKey;
+        }
+    }
+
+    private async Task SeedAsync()
+    {
+        _busy = true;
+        try {
+            await Tests.SeedAsync();
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    // The item stays on screen after labelling (so a slip can be corrected); the
+    // filter applies the next time the list loads.
+    private async Task SetAsync(GradingTestItem item, GradingLabel? label, bool excluded)
+    {
+        await Tests.SetAsync(item.Id, label, excluded, item.Note);
+        item.Label = excluded ? null : label;
+        item.LabelSource = LabelSource.Person;
+        item.NeedsPerson = false;
+        item.Excluded = excluded;
+        _points = await Tests.PointsAsync();
+    }
+
+    private async Task SetNoteAsync(GradingTestItem item, string? note)
+    {
+        item.Note = note;
+        await Tests.SetNoteAsync(item.Id, note);
+    }
+
+    private async Task ShowVotesAsync(GradingTestItem item)
+    {
+        _votes[item.Id] = await Tests.VotesAsync(item.Id);
+    }
+
+    private async Task AddAsync()
+    {
+        _busy = true;
+        try {
+            string? error = await Tests.AddAsync(_newPoint, _newTask, _newSentence);
+            _message = error ?? "Added. It's in the list, unlabelled.";
+            if (error is null) {
+                _newTask = string.Empty;
+                _newSentence = string.Empty;
+                if (_input is not null) {
+                    await _input.ClearAsync();
+                }
+                await LoadAsync();
+            }
+        } finally {
+            _busy = false;
+        }
+    }
+}

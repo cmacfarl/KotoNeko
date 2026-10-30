@@ -3,9 +3,9 @@
 @inject DictionaryService DictionaryService
 @inject DictionaryImportService ImportService
 @inject BackupService Backups
-@inject KotoNeko.Web.Services.Llm.LlmService Llm
+@inject KotoNeko.Llm.LlmService Llm
 @using KotoNeko.Core.Llm
-@using KotoNeko.Web.Services.Llm
+@using KotoNeko.Llm
 @implements IDisposable
 @using KotoNeko.Data.Dictionary
 @using KotoNeko.Data.Backup
@@ -226,6 +226,9 @@ else
         <p class="kn-hint">
             Last 30 days: @_llmUsage.Calls.ToString("N0") call@(_llmUsage.Calls == 1 ? "" : "s")@(_llmUsage.Failed > 0 ? $" ({_llmUsage.Failed} without a usable answer)" : ""),
             @_llmUsage.InputTokens.ToString("N0") tokens in, @_llmUsage.OutputTokens.ToString("N0") out.
+        </p>
+        <p>
+            <a href="/grading-tests">Grading test set</a><span class="kn-hint">: label sentences to measure the grader before it grades your reviews.</span>
         </p>
         <p>
             <a href="/proofread">Proofreading page</a><span class="kn-hint">: new generated and written sentences, for a native speaker to mark OK or "needs a fix".</span>

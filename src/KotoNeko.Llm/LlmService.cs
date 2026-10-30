@@ -4,11 +4,16 @@ using Anthropic.Exceptions;
 using KotoNeko.Core.Llm;
 using KotoNeko.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
-namespace KotoNeko.Web.Services.Llm;
+namespace KotoNeko.Llm;
 
 /// <summary>Which provider and model a job uses.</summary>
 public sealed record LlmRoute(LlmJob Job, string Provider, string Model, bool IsConfigured);
+
+/// <summary>A parsed answer, with the route that produced it, its tokens and the raw JSON.</summary>
+public sealed record LlmResult<T>(T Value, LlmRoute Route, int InputTokens, int OutputTokens, string Json);
 
 /// <summary>A provider and whether it can be called.</summary>
 public sealed record LlmProviderStatus(string Name, bool IsConfigured, string HowToConfigure);
@@ -64,16 +69,34 @@ public sealed class LlmService
     /// returns a problem description, or null when the answer is usable. Throws
     /// <see cref="LlmException"/> when there's no usable answer.
     /// </summary>
-    public async Task<T> CallAsync<T>(LlmRequest request, Func<T, string?> validate, CancellationToken cancellationToken = default)
+    public async Task<T> CallAsync<T>(LlmRequest request, Func<T, string?> validate, CancellationToken cancellationToken = default) =>
+        (await CallWithUsageAsync(request, validate, cancellationToken)).Value;
+
+    /// <summary>As <see cref="CallAsync{T}"/>, also returning the route used and the tokens spent.</summary>
+    public async Task<LlmResult<T>> CallWithUsageAsync<T>(LlmRequest request, Func<T, string?> validate, CancellationToken cancellationToken = default)
     {
         LlmRoute route = Route(request.Job)
             ?? throw new LlmException(LlmOutcome.NotConfigured, $"No provider is set for the {request.Job} job (Llm:Jobs:{request.Job} in appsettings.json).");
-        if (!_providers.TryGetValue(route.Provider, out ILlmProvider? provider)) {
-            throw new LlmException(LlmOutcome.NotConfigured, $"The {request.Job} job names an unknown provider, {route.Provider}.");
+        return await CallOnAsync(route.Provider, route.Model, request, validate, cancellationToken);
+    }
+
+    /// <summary>Whether a provider exists and has its key or address.</summary>
+    public bool IsConfigured(string provider) => _providers.TryGetValue(provider, out ILlmProvider? p) && p.IsConfigured;
+
+    /// <summary>
+    /// As <see cref="CallWithUsageAsync{T}"/>, on a named provider and model rather than
+    /// the job's route (pre-labelling asks several models the same question).
+    /// </summary>
+    public async Task<LlmResult<T>> CallOnAsync<T>(
+        string providerName, string model, LlmRequest request, Func<T, string?> validate, CancellationToken cancellationToken = default)
+    {
+        if (!_providers.TryGetValue(providerName, out ILlmProvider? provider)) {
+            throw new LlmException(LlmOutcome.NotConfigured, $"Unknown provider {providerName} (Claude, Gemini or LmStudio).");
         }
         if (!provider.IsConfigured) {
             throw new LlmException(LlmOutcome.NotConfigured, $"{provider.Name} isn't configured: set its key or address (see Settings).");
         }
+        LlmRoute route = new(request.Job, provider.Name, model, true);
 
         Stopwatch timer = Stopwatch.StartNew();
         LlmResponse? response = null;
@@ -90,16 +113,21 @@ public sealed class LlmService
                     $"{provider.Name}'s answer didn't have the expected shape{(parsed is null ? "" : ": " + validate(parsed))}.");
             }
             await LogAsync(request, route, response, timer, LlmOutcome.Ok, null);
-            return parsed;
+            return new LlmResult<T>(parsed, route, response.InputTokens, response.OutputTokens, response.Json);
         } catch (LlmException ex) {
             await LogAsync(request, route, response, timer, ex.Outcome, ex.Message);
+            ex.InputTokens = response?.InputTokens ?? 0;
+            ex.OutputTokens = response?.OutputTokens ?? 0;
             throw;
         } catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested)) {
             // Anything else (an SDK error, a network failure, a timeout, a malformed
             // response body) is logged and reported, never left to crash the page.
             string message = Describe(provider.Name, ex, cancellationToken);
             await LogAsync(request, route, response, timer, LlmOutcome.Failed, message);
-            throw new LlmException(LlmOutcome.Failed, message, ex);
+            throw new LlmException(LlmOutcome.Failed, message, ex) {
+                InputTokens = response?.InputTokens ?? 0,
+                OutputTokens = response?.OutputTokens ?? 0,
+            };
         }
     }
 

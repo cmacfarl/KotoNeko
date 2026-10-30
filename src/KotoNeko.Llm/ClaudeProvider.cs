@@ -4,7 +4,7 @@ using Anthropic;
 using Anthropic.Models.Beta.Messages;
 using KotoNeko.Core.Llm;
 
-namespace KotoNeko.Web.Services.Llm;
+namespace KotoNeko.Llm;
 
 /// <summary>
 /// Claude, through the official Anthropic SDK, with structured output. Requests use
@@ -45,7 +45,7 @@ public sealed class ClaudeProvider : ILlmProvider
             Fallbacks = new Default(),
             System = request.System,
             OutputConfig = new BetaOutputConfig {
-                Effort = _effort,
+                Effort = request.Effort ?? _effort,
                 Format = new BetaJsonOutputFormat { Schema = schema },
             },
             Messages = [new BetaUserMessageParam { Content = request.Prompt }],

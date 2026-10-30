@@ -1137,3 +1137,9 @@ kbd {
 .kn-proofread-english { font-size: 1rem; margin-bottom: 0.4rem; }
 .kn-proofread-buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.8rem; }
 .kn-proofread-done { font-size: 1.2rem; }
+
+/* Grading test set */
+.kn-grading-item { padding: 1rem 1.25rem; }
+.kn-grading-task { margin: 0.2rem 0; }
+.kn-grading-sentence { font-size: 1.6rem; line-height: 1.6; margin: 0.3rem 0 0.6rem; }
+.kn-grading-votes { margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #f6f6f8; border-radius: 6px; font-size: 0.9rem; }

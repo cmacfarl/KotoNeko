@@ -225,6 +225,241 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("DictionaryMeanings");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.GradingEvalResult", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Confidence")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<bool>("GraderVoted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Label")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LabelSource")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("Natural")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("RunId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("TargetUsedCorrectly")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("VerdictJson")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("RunId");
+
+                    b.ToTable("GradingEvalResults");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GradingEvalRun", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<double>("Agreement")
+                        .HasColumnType("double");
+
+                    b.Property<double>("AiAgreedAgreement")
+                        .HasColumnType("double");
+
+                    b.Property<int>("AiAgreedGraded")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Effort")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<double>("FalseCorrectionRate")
+                        .HasColumnType("double");
+
+                    b.Property<double>("FalsePassRate")
+                        .HasColumnType("double");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Graded")
+                        .HasColumnType("int");
+
+                    b.Property<long>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Items")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<long>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PromptVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GradingEvalRuns");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GradingPrelabel", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Effort")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Label")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("PromptVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId", "Provider", "Model", "PromptVersion")
+                        .IsUnique();
+
+                    b.ToTable("GradingPrelabels");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GradingTestItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("Excluded")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("GrammarKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<int?>("Label")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LabelSource")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LabelledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Meaning")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<bool>("NeedsPerson")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("SeedKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Sentence")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Task")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GrammarKey");
+
+                    b.HasIndex("SeedKey")
+                        .IsUnique();
+
+                    b.ToTable("GradingTestItems");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.GrammarListEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -814,6 +1049,26 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("StudyItem");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.GradingEvalResult", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.GradingEvalRun", "Run")
+                        .WithMany("Results")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GradingPrelabel", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.GradingTestItem", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>
                 {
                     b.HasOne("KotoNeko.Core.Domain.Vocabulary", "Vocabulary")
@@ -899,6 +1154,11 @@ namespace KotoNeko.Data.Migrations
             modelBuilder.Entity("KotoNeko.Core.Domain.Conjugation", b =>
                 {
                     b.Navigation("ConjugatedAudio");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GradingEvalRun", b =>
+                {
+                    b.Navigation("Results");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>

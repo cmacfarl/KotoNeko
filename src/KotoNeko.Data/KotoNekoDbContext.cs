@@ -31,6 +31,10 @@ public class KotoNekoDbContext : DbContext
     public DbSet<PracticeSentenceAudio> PracticeSentenceAudios => Set<PracticeSentenceAudio>();
     public DbSet<GrammarListEntry> GrammarList => Set<GrammarListEntry>();
     public DbSet<LlmCall> LlmCalls => Set<LlmCall>();
+    public DbSet<GradingTestItem> GradingTestItems => Set<GradingTestItem>();
+    public DbSet<GradingEvalRun> GradingEvalRuns => Set<GradingEvalRun>();
+    public DbSet<GradingEvalResult> GradingEvalResults => Set<GradingEvalResult>();
+    public DbSet<GradingPrelabel> GradingPrelabels => Set<GradingPrelabel>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -227,6 +231,58 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.Meaning).HasMaxLength(GrammarListEntry.MaxMeaningLength).IsRequired();
             entity.HasIndex(e => e.SeedKey).IsUnique();
             entity.HasIndex(e => new { e.Level, e.SortOrder });
+        });
+
+        // The grading test set (Phase 3): labelled sentences and the eval runs scored against them.
+        modelBuilder.Entity<GradingTestItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SeedKey).HasMaxLength(64).UseCollation("utf8mb4_bin");
+            entity.Property(e => e.GrammarKey).HasMaxLength(GrammarListEntry.MaxKeyLength).IsRequired();
+            entity.Property(e => e.Pattern).HasMaxLength(GrammarListEntry.MaxPatternLength).IsRequired();
+            entity.Property(e => e.Meaning).HasMaxLength(GrammarListEntry.MaxMeaningLength).IsRequired();
+            entity.Property(e => e.Task).HasMaxLength(GradingTestItem.MaxTaskLength).IsRequired();
+            entity.Property(e => e.Sentence).HasMaxLength(GradingTestItem.MaxSentenceLength).IsRequired();
+            entity.Property(e => e.Note).HasMaxLength(GradingTestItem.MaxNoteLength);
+            entity.HasIndex(e => e.SeedKey).IsUnique();
+            entity.HasIndex(e => e.GrammarKey);
+        });
+
+        modelBuilder.Entity<GradingPrelabel>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Provider).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Model).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Effort).HasMaxLength(20);
+            entity.Property(e => e.PromptVersion).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Explanation).HasColumnType("text").IsRequired();
+            entity.HasOne<GradingTestItem>()
+                .WithMany()
+                .HasForeignKey(e => e.ItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.ItemId, e.Provider, e.Model, e.PromptVersion }).IsUnique();
+        });
+
+        modelBuilder.Entity<GradingEvalRun>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Effort).HasMaxLength(20);
+            entity.Property(e => e.Provider).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Model).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.PromptVersion).HasMaxLength(100).IsRequired();
+            entity.HasMany(e => e.Results)
+                .WithOne(r => r.Run)
+                .HasForeignKey(r => r.RunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GradingEvalResult>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Confidence).HasMaxLength(20);
+            entity.Property(e => e.VerdictJson).HasColumnType("text");
+            entity.Property(e => e.Error).HasMaxLength(500);
+            entity.HasIndex(e => e.ItemId);
         });
 
         modelBuilder.Entity<LlmCall>(entity =>

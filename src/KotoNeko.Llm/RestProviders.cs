@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using KotoNeko.Core.Llm;
 
-namespace KotoNeko.Web.Services.Llm;
+namespace KotoNeko.Llm;
 
 /// <summary>Sending JSON to a REST provider, with one retry for a busy or flaky service.</summary>
 internal static class RestCalls
@@ -43,9 +43,11 @@ internal static class RestCalls
 }
 
 /// <summary>
-/// Gemini, through the generateContent REST endpoint with a JSON response schema.
-/// (Google now recommends its newer Interactions API, but generateContent remains
-/// fully supported and is the simpler fit for one structured call.)
+/// Gemini, through the generateContent REST endpoint with the JSON schema passed as
+/// is (responseJsonSchema) and a thinking level (Llm:Gemini:ThinkingLevel, or the
+/// request's effort). Google now recommends its newer Interactions API, but
+/// generateContent remains fully supported and is the simpler fit for one
+/// structured call.
 /// </summary>
 public sealed class GeminiProvider : ILlmProvider
 {
@@ -53,15 +55,46 @@ public sealed class GeminiProvider : ILlmProvider
 
     private readonly HttpClient _http;
     private readonly string? _apiKey;
+    private readonly string _thinkingLevel;
 
     /// <param name="apiKey">From Llm:Gemini:ApiKey or GEMINI_API_KEY.</param>
-    public GeminiProvider(HttpClient http, string? apiKey)
+    /// <param name="thinkingLevel">low, medium or high (Llm:Gemini:ThinkingLevel); default low.</param>
+    public GeminiProvider(HttpClient http, string? apiKey, string? thinkingLevel = null)
     {
         _http = http;
         _apiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
+        _thinkingLevel = string.IsNullOrWhiteSpace(thinkingLevel) ? "low" : thinkingLevel.Trim().ToLowerInvariant();
     }
 
     public string Name => "Gemini";
+
+    /// <summary>The generateContent request body.</summary>
+    public static JsonObject Body(LlmRequest request, string model, string thinkingLevel) => new() {
+        ["systemInstruction"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["text"] = request.System }) },
+        ["contents"] = new JsonArray(new JsonObject {
+            ["role"] = "user",
+            ["parts"] = new JsonArray(new JsonObject { ["text"] = request.Prompt }),
+        }),
+        ["generationConfig"] = new JsonObject {
+            ["responseMimeType"] = "application/json",
+            ["responseJsonSchema"] = request.Schema.DeepClone(),
+            ["maxOutputTokens"] = request.MaxTokens,
+            ["thinkingConfig"] = ThinkingConfig(model, thinkingLevel),
+        },
+    };
+
+    /// <summary>
+    /// Gemini 3 and later take a thinking level; 2.x models predate levels and take a
+    /// token budget, so the level is mapped to one.
+    /// </summary>
+    public static JsonObject ThinkingConfig(string model, string level)
+    {
+        level = level switch { "xhigh" or "max" => "high", "minimal" => "low", _ => level };
+        if (model.StartsWith("gemini-2.", StringComparison.Ordinal)) {
+            return new JsonObject { ["thinkingBudget"] = level switch { "low" => 1024, "high" => 24576, _ => 8192 } };
+        }
+        return new JsonObject { ["thinkingLevel"] = level };
+    }
 
     public bool IsConfigured => _apiKey is not null;
 
@@ -71,18 +104,7 @@ public sealed class GeminiProvider : ILlmProvider
             throw new LlmException(LlmOutcome.NotConfigured, "No Gemini API key is configured.");
         }
 
-        JsonObject body = new() {
-            ["systemInstruction"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["text"] = request.System }) },
-            ["contents"] = new JsonArray(new JsonObject {
-                ["role"] = "user",
-                ["parts"] = new JsonArray(new JsonObject { ["text"] = request.Prompt }),
-            }),
-            ["generationConfig"] = new JsonObject {
-                ["responseMimeType"] = "application/json",
-                ["responseSchema"] = LlmSchemas.ForGemini(request.Schema),
-                ["maxOutputTokens"] = request.MaxTokens,
-            },
-        };
+        JsonObject body = Body(request, model, request.Effort ?? _thinkingLevel);
 
         string url = string.Format(Endpoint, Uri.EscapeDataString(model));
         JsonNode response = await RestCalls.PostAsync(_http, Name, () => {

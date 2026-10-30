@@ -1,0 +1,24 @@
+using KotoNeko.Core.Llm;
+
+namespace KotoNeko.Llm;
+
+/// <summary>
+/// Grades a learner's sentence for one grammar point with the Grade job's LLM.
+/// Used by the grading eval now and by composition reviews in Phase 5.
+/// </summary>
+public sealed class GradingService
+{
+    private readonly LlmService _llm;
+
+    public GradingService(LlmService llm)
+    {
+        _llm = llm;
+    }
+
+    public LlmRoute? Route => _llm.Route(LlmJob.Grade);
+
+    /// <summary>The verdict, with tokens and raw JSON. Throws <see cref="LlmException"/> when there's no usable verdict.</summary>
+    /// <param name="effort">Overrides the provider's configured effort or thinking level.</param>
+    public Task<LlmResult<GradingVerdict>> GradeAsync(GradingTask task, string? effort = null, CancellationToken cancellationToken = default) =>
+        _llm.CallWithUsageAsync<GradingVerdict>(Grading.Build(task) with { Effort = effort }, Grading.Validate, cancellationToken);
+}

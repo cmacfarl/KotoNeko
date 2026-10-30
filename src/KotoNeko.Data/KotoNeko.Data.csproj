@@ -15,6 +15,10 @@
   <ItemGroup>
     <!-- The drafted grammar list, read by GrammarList.Drafted(). -->
     <EmbeddedResource Include="Grammar\grammar-list.json" LogicalName="KotoNeko.Data.Grammar.grammar-list.json" />
+    <!-- Unlabelled candidates for the grading test set, read by GradingTestSet.Candidates(). -->
+    <EmbeddedResource Include="Grammar\grading-candidates.json" LogicalName="KotoNeko.Data.Grammar.grading-candidates.json" />
+    <!-- How each candidate was drafted: one pre-labelling vote, never shown while labelling. -->
+    <EmbeddedResource Include="Grammar\grading-candidates-intent.json" LogicalName="KotoNeko.Data.Grammar.grading-candidates-intent.json" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -2,6 +2,7 @@ using KotoNeko.Core.Domain;
 using KotoNeko.Core.Llm;
 using KotoNeko.Data;
 using KotoNeko.Data.Vocab;
+using KotoNeko.Llm;
 using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services.Llm;

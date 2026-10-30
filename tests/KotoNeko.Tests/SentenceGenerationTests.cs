@@ -84,16 +84,17 @@ public class SentenceGenerationTests
     }
 
     [Fact]
-    public void Geminis_Schema_Has_Capitalised_Types_And_No_Additional_Properties()
+    public void Gemini_Gets_The_Schema_As_Is_And_A_Thinking_Level()
     {
-        JsonNode gemini = LlmSchemas.ForGemini(SentenceGeneration.Schema());
-        JsonNode item = gemini["properties"]!["sentences"]!["items"]!;
+        LlmRequest request = SentenceGeneration.Build(Meet, Array.Empty<string>(), Array.Empty<(string, string)>(), Array.Empty<string>());
 
-        Assert.Equal("OBJECT", gemini["type"]!.GetValue<string>());
-        Assert.Equal("ARRAY", gemini["properties"]!["sentences"]!["type"]!.GetValue<string>());
-        Assert.Equal("STRING", item["properties"]!["japanese"]!["type"]!.GetValue<string>());
-        Assert.Null(gemini["additionalProperties"]);
-        Assert.Null(item["additionalProperties"]);
-        Assert.Equal(2, item["required"]!.AsArray().Count);
+        JsonObject body = KotoNeko.Llm.GeminiProvider.Body(request, "gemini-3.8-flash", "low");
+        JsonNode config = body["generationConfig"]!;
+
+        Assert.Equal("application/json", config["responseMimeType"]!.GetValue<string>());
+        Assert.True(JsonNode.DeepEquals(SentenceGeneration.Schema(), config["responseJsonSchema"]));
+        Assert.Equal("low", config["thinkingConfig"]!["thinkingLevel"]!.GetValue<string>());
+        Assert.Equal(1024, KotoNeko.Llm.GeminiProvider.ThinkingConfig("gemini-2.5-flash", "low")["thinkingBudget"]!.GetValue<int>());
+        Assert.Equal("high", KotoNeko.Llm.GeminiProvider.ThinkingConfig("gemini-3.8-flash", "xhigh")["thinkingLevel"]!.GetValue<string>());
     }
 }
