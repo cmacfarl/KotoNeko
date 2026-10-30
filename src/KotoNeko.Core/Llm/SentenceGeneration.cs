@@ -101,7 +101,7 @@ public static class SentenceGeneration
             ? "Existing sentences for this word (don't repeat them):\n" + string.Join("\n", have.Select(s => $"- {s}"))
             : "Existing sentences for this word: none.");
 
-        return new LlmRequest(LlmJob.Generate, PromptVersion, System, prompt.ToString(), "practice_sentences", Schema());
+        return new LlmRequest(LlmJob.Generate, LlmFeature.PracticeSentences, PromptVersion, System, prompt.ToString(), "practice_sentences", Schema());
     }
 
     /// <summary>Whether the answer is usable at all: null when it is, else what's wrong.</summary>

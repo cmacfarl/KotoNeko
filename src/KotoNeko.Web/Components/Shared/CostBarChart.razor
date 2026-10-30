@@ -1,0 +1,89 @@
+@* A single-series bar chart of dollar amounts, drawn as SVG: bars with rounded
+   tops on the baseline, a light grid, axis labels on every Nth bar, and a
+   hover target per column that highlights the bar and shows its tooltip. *@
+@using System.Globalization
+@using KotoNeko.Core.Llm
+
+<svg class="kn-chart" viewBox="0 0 @Width @Height" role="img" aria-label="@Title">
+    <title>@Title</title>
+    @for (int i = 0; i <= GridLines; i++)
+    {
+        decimal value = Top * i / GridLines;
+        double y = Y(value);
+        <line x1="@F(Left)" x2="@F(Width - Right)" y1="@F(y)" y2="@F(y)" class="@(i == 0 ? "kn-chart-base" : "kn-chart-grid")" />
+        @Tick(Left - 6, y + 4, "end", Money(value))
+    }
+    @for (int i = 0; i < Bars.Count; i++)
+    {
+        ChartBar bar = Bars[i];
+        double x = Left + i * Slot;
+        double barWidth = Math.Max(2, Slot - Gap);
+        double top = Y(bar.Value);
+        double height = Y(0) - top;
+        <g class="kn-chart-col">
+            <title>@bar.Tooltip</title>
+            <rect class="kn-chart-hit" x="@F(x)" y="@F(Top_)" width="@F(Slot)" height="@F(Y(0) - Top_)" />
+            @if (bar.Value > 0)
+            {
+                <path class="kn-chart-bar" d="@BarPath(x + Gap / 2, Y(0), barWidth, Math.Max(height, 1))" />
+            }
+        </g>
+        @if (bar.Label is { } label)
+        {
+            @Tick(x + Slot / 2, Height - 8, "middle", label)
+        }
+    }
+</svg>
+
+@code {
+    /// <summary>One bar: its axis label (null for none), hover text and value in dollars.</summary>
+    public sealed record ChartBar(string? Label, string Tooltip, decimal Value);
+
+    [Parameter, EditorRequired] public IReadOnlyList<ChartBar> Bars { get; set; } = Array.Empty<ChartBar>();
+    [Parameter] public string Title { get; set; } = "";
+
+    private const double Width = 720;
+    private const double Height = 220;
+    private const double Left = 64;
+    private const double Right = 8;
+    private const double Top_ = 10;
+    private const double Bottom = 28;
+    private const double Gap = 2;
+    private const int GridLines = 4;
+
+    private decimal Top => LlmAccounting.NiceCeiling(Bars.Count == 0 ? 0 : Bars.Max(b => b.Value));
+    private double Slot => Bars.Count == 0 ? 0 : (Width - Left - Right) / Bars.Count;
+
+    private double Y(decimal value) =>
+        Height - Bottom - (double)(value / Top) * (Height - Bottom - Top_);
+
+    /// <summary>A bar from the baseline up, its top corners rounded (4px, less on a short or thin bar).</summary>
+    private static string BarPath(double x, double baseline, double width, double height)
+    {
+        double r = Math.Min(4, Math.Min(width / 2, height));
+        double top = baseline - height;
+        return $"M{F(x)},{F(baseline)} V{F(top + r)} Q{F(x)},{F(top)} {F(x + r)},{F(top)} " +
+               $"H{F(x + width - r)} Q{F(x + width)},{F(top)} {F(x + width)},{F(top + r)} V{F(baseline)} Z";
+    }
+
+    // An SVG <text> label, built in code: Razor reads a literal <text> tag in a code block as its own.
+    private static RenderFragment Tick(double x, double y, string anchor, string content) => builder =>
+    {
+        builder.OpenElement(0, "text");
+        builder.AddAttribute(1, "x", F(x));
+        builder.AddAttribute(2, "y", F(y));
+        builder.AddAttribute(3, "class", "kn-chart-tick");
+        builder.AddAttribute(4, "text-anchor", anchor);
+        builder.AddContent(5, content);
+        builder.CloseElement();
+    };
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>Dollars with enough decimals to tell small amounts apart.</summary>
+    public static string Money(decimal value) =>
+        value == 0 ? "$0"
+        : value < 0.01m ? "$" + value.ToString("0.0000", CultureInfo.InvariantCulture)
+        : value < 1m ? "$" + value.ToString("0.000", CultureInfo.InvariantCulture)
+        : "$" + value.ToString("#,0.00", CultureInfo.InvariantCulture);
+}

@@ -18,6 +18,31 @@ public enum LlmJob
     Label = 3,
 }
 
+/// <summary>
+/// The feature a call was made for, for the accounting page. Finer than <see cref="LlmJob"/>:
+/// lesson grading and the grading eval share the Grade job and its prompt.
+/// </summary>
+public enum LlmFeature
+{
+    /// <summary>Logged before features were recorded, with a prompt version that didn't say.</summary>
+    Unknown = 0,
+
+    /// <summary>Writing practice sentences for a vocabulary word.</summary>
+    PracticeSentences = 1,
+
+    /// <summary>Drafting a grammar point's lesson content.</summary>
+    GrammarDrafting = 2,
+
+    /// <summary>Grading a sentence written in a grammar lesson.</summary>
+    LessonGrading = 3,
+
+    /// <summary>The grading eval (tests/KotoNeko.Evals).</summary>
+    GradingEval = 4,
+
+    /// <summary>Pre-labelling the grading test set.</summary>
+    Prelabelling = 5,
+}
+
 /// <summary>How an LLM call ended, for the call log.</summary>
 public enum LlmOutcome
 {
@@ -39,11 +64,13 @@ public enum LlmOutcome
 /// <summary>
 /// One structured-output request: a system prompt, a user prompt and the JSON schema
 /// the answer must follow. <see cref="PromptVersion"/> goes in the call log, so old
-/// results can be traced to the prompt that produced them. <see cref="Effort"/> (low,
-/// medium, high) overrides the provider's configured effort or thinking level.
+/// results can be traced to the prompt that produced them, and so does <see cref="Feature"/>,
+/// so spending can be split by what it was for. <see cref="Effort"/> (low, medium, high)
+/// overrides the provider's configured effort or thinking level.
 /// </summary>
 public sealed record LlmRequest(
     LlmJob Job,
+    LlmFeature Feature,
     string PromptVersion,
     string System,
     string Prompt,
@@ -93,6 +120,7 @@ public class LlmCall
 {
     public long Id { get; set; }
     public LlmJob Job { get; set; }
+    public LlmFeature Feature { get; set; }
     public string Provider { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
     public string PromptVersion { get; set; } = string.Empty;
@@ -100,6 +128,13 @@ public class LlmCall
     public int OutputTokens { get; set; }
     public int DurationMs { get; set; }
     public LlmOutcome Outcome { get; set; }
+
+    /// <summary>
+    /// What the call cost in US dollars, from Llm:Prices when it was made (failed calls
+    /// that used tokens cost too). Null when the model had no price; the accounting
+    /// page fills it in once a price is added.
+    /// </summary>
+    public decimal? Cost { get; set; }
 
     /// <summary>What went wrong, when it did.</summary>
     public string? Error { get; set; }

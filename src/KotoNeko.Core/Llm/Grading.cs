@@ -106,8 +106,8 @@ public static class Grading
         ["additionalProperties"] = false,
     };
 
-    public static LlmRequest Build(GradingTask task) => new(
-        LlmJob.Grade, PromptVersion, System,
+    public static LlmRequest Build(GradingTask task, LlmFeature feature) => new(
+        LlmJob.Grade, feature, PromptVersion, System,
         $"""
         Grammar point: {task.Pattern} ({task.Meaning})
         Situation given to the learner: {(task.Task.Length > 0 ? task.Task : "(none: free sentence)")}

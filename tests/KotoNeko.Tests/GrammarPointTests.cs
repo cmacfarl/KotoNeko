@@ -83,6 +83,7 @@ public class GrammarPointTests
 
         Assert.Equal(LlmJob.Generate, request.Job);
         Assert.Equal(GrammarDrafting.PromptVersion, request.PromptVersion);
+        Assert.Equal(LlmFeature.GrammarDrafting, request.Feature);
         Assert.Contains("〜のに (even though), JLPT N4", request.Prompt);
         Assert.Contains("(2, a sample)", request.Prompt);
         Assert.Contains("- 〜から: because", request.Prompt);

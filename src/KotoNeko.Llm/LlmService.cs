@@ -32,15 +32,17 @@ public sealed class LlmService
     private readonly IReadOnlyDictionary<string, ILlmProvider> _providers;
     private readonly IConfiguration _configuration;
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
+    private readonly LlmPricing _pricing;
     private readonly ILogger<LlmService> _logger;
 
     public LlmService(
         IEnumerable<ILlmProvider> providers, IConfiguration configuration,
-        IDbContextFactory<KotoNekoDbContext> factory, ILogger<LlmService> logger)
+        IDbContextFactory<KotoNekoDbContext> factory, LlmPricing pricing, ILogger<LlmService> logger)
     {
         _providers = providers.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
         _configuration = configuration;
         _factory = factory;
+        _pricing = pricing;
         _logger = logger;
     }
 
@@ -149,11 +151,13 @@ public sealed class LlmService
             await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
             db.LlmCalls.Add(new LlmCall {
                 Job = request.Job,
+                Feature = request.Feature,
                 Provider = route.Provider,
                 Model = route.Model,
                 PromptVersion = request.PromptVersion,
                 InputTokens = response?.InputTokens ?? 0,
                 OutputTokens = response?.OutputTokens ?? 0,
+                Cost = _pricing.Cost(route.Model, response?.InputTokens ?? 0, response?.OutputTokens ?? 0),
                 DurationMs = (int)Math.Min(int.MaxValue, timer.ElapsedMilliseconds),
                 Outcome = outcome,
                 Error = error is { Length: > 500 } ? error[..500] : error,

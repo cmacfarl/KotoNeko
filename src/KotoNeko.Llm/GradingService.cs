@@ -18,7 +18,9 @@ public sealed class GradingService
     public LlmRoute? Route => _llm.Route(LlmJob.Grade);
 
     /// <summary>The verdict, with tokens and raw JSON. Throws <see cref="LlmException"/> when there's no usable verdict.</summary>
+    /// <param name="feature">What the grading is for (a lesson or the eval), for the accounting page.</param>
     /// <param name="effort">Overrides the provider's configured effort or thinking level.</param>
-    public Task<LlmResult<GradingVerdict>> GradeAsync(GradingTask task, string? effort = null, CancellationToken cancellationToken = default) =>
-        _llm.CallWithUsageAsync<GradingVerdict>(Grading.Build(task) with { Effort = effort }, Grading.Validate, cancellationToken);
+    public Task<LlmResult<GradingVerdict>> GradeAsync(
+        GradingTask task, LlmFeature feature, string? effort = null, CancellationToken cancellationToken = default) =>
+        _llm.CallWithUsageAsync<GradingVerdict>(Grading.Build(task, feature) with { Effort = effort }, Grading.Validate, cancellationToken);
 }

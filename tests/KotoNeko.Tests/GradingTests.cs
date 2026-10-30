@@ -59,9 +59,10 @@ public class GradingTests
     [Fact]
     public void The_Request_Names_The_Point_Situation_And_Sentence()
     {
-        LlmRequest request = Grading.Build(new GradingTask("〜のに", "even though", "Say you studied but failed.", "勉強したのに、落ちた。"));
+        LlmRequest request = Grading.Build(new GradingTask("〜のに", "even though", "Say you studied but failed.", "勉強したのに、落ちた。"), LlmFeature.LessonGrading);
 
         Assert.Equal(LlmJob.Grade, request.Job);
+        Assert.Equal(LlmFeature.LessonGrading, request.Feature);
         Assert.Equal(Grading.PromptVersion, request.PromptVersion);
         Assert.Contains("〜のに (even though)", request.Prompt);
         Assert.Contains("Say you studied but failed.", request.Prompt);
@@ -194,9 +195,11 @@ public class PrelabellingTests
     {
         GradingTask task = new("〜のに", "even though", "Say you studied but failed.", "勉強したのに、落ちた。");
         LlmRequest label = Prelabelling.Build(task, "high");
-        LlmRequest grade = Grading.Build(task);
+        LlmRequest grade = Grading.Build(task, LlmFeature.GradingEval);
 
         Assert.Equal(LlmJob.Label, label.Job);
+        Assert.Equal(LlmFeature.Prelabelling, label.Feature);
+        Assert.Equal(LlmFeature.GradingEval, grade.Feature);
         Assert.Equal("high", label.Effort);
         Assert.NotEqual(grade.System, label.System);
         Assert.Contains("勉強したのに、落ちた。", label.Prompt);

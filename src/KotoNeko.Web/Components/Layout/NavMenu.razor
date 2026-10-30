@@ -20,6 +20,7 @@
                 <a class="kn-nav-link @ActiveClass("known-words")" href="/known-words">Known words</a>
                 <a class="kn-nav-link @GrammarListClass" href="/grammar">Grammar</a>
                 <a class="kn-nav-link @ActiveClass("sources")" href="/sources">Sources</a>
+                <a class="kn-nav-link @ActiveClass("accounting")" href="/accounting">Accounting</a>
                 <a class="kn-nav-link @ActiveClass("settings")" href="/settings">Settings</a>
             </div>
         </details>
@@ -44,7 +45,7 @@
         CurrentRelative.StartsWith("grammar-lessons", StringComparison.OrdinalIgnoreCase) ? "" : ActiveClass("grammar");
 
     private bool ManageActive =>
-        new[] { ActiveClass("vocab"), ActiveClass("known-words"), GrammarListClass, ActiveClass("sources"), ActiveClass("settings") }
+        new[] { ActiveClass("vocab"), ActiveClass("known-words"), GrammarListClass, ActiveClass("sources"), ActiveClass("accounting"), ActiveClass("settings") }
             .Any(c => c.Length > 0);
 
     private string ActiveClass(string segment, bool exact = false)

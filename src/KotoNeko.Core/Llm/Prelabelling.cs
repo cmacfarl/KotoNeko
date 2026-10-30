@@ -84,7 +84,7 @@ public static class Prelabelling
     };
 
     public static LlmRequest Build(GradingTask task, string? effort) => new(
-        LlmJob.Label, PromptVersion, System,
+        LlmJob.Label, LlmFeature.Prelabelling, PromptVersion, System,
         $"""
         Grammar point: {task.Pattern} ({task.Meaning})
         Situation given to the student: {(task.Task.Length > 0 ? task.Task : "(none: free sentence)")}

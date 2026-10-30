@@ -211,7 +211,7 @@ async Task<int> GradeAsync()
         (int Input, int Output) spent = (0, 0);
         try {
             LlmResult<GradingVerdict> graded = await grading.GradeAsync(
-                new GradingTask(item.Pattern, item.Meaning, item.Task, item.Sentence), effort, cancellationToken);
+                new GradingTask(item.Pattern, item.Meaning, item.Task, item.Sentence), LlmFeature.GradingEval, effort, cancellationToken);
             verdict = graded.Value;
             result.TargetUsedCorrectly = verdict.TargetUsedCorrectly;
             result.Natural = verdict.Natural;

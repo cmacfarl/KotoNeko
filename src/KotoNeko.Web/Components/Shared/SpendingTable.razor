@@ -1,0 +1,74 @@
+@* Spending for the accounting page, the table view behind each chart: one block per
+   group (a feature, or a model), a row per line within it (its models, or its
+   features), and a subtotal when a group has more than one line. *@
+@using KotoNeko.Core.Llm
+
+@if (Groups.Count == 0)
+{
+    <p class="kn-empty">No LLM calls in this period.</p>
+}
+else
+{
+    <table class="kn-table kn-accounting-table">
+        <thead>
+        <tr>
+            <th>@GroupBy</th>
+            <th>@LineBy</th>
+            <th class="kn-num">Calls</th>
+            <th class="kn-num">Failed</th>
+            <th class="kn-num">Tokens in</th>
+            <th class="kn-num">Tokens out</th>
+            <th class="kn-num">Cost</th>
+        </tr>
+        </thead>
+        @foreach (SpendingGroup group in Groups)
+        {
+            bool subtotal = group.Lines.Count > 1;
+            <tbody class="kn-accounting-group">
+            @for (int i = 0; i < group.Lines.Count; i++)
+            {
+                <tr>
+                    @if (i == 0)
+                    {
+                        <td class="kn-accounting-group-name" rowspan="@(group.Lines.Count + (subtotal ? 1 : 0))">@group.Name</td>
+                    }
+                    <td>@group.Lines[i].Name</td>
+                    @Figures(group.Lines[i])
+                </tr>
+            }
+            @if (subtotal)
+            {
+                <tr class="kn-accounting-subtotal">
+                    <td>All @(LineBy.ToLowerInvariant())s</td>
+                    @Figures(group.Total)
+                </tr>
+            }
+            </tbody>
+        }
+        <tfoot>
+        <tr>
+            <td colspan="2">Total</td>
+            @Figures(new SpendingLine("Total", Groups.Sum(g => g.Total.Calls), Groups.Sum(g => g.Total.Failed),
+                Groups.Sum(g => g.Total.InputTokens), Groups.Sum(g => g.Total.OutputTokens),
+                Groups.Sum(g => g.Total.Cost), Groups.Sum(g => g.Total.UnpricedTokens)))
+        </tr>
+        </tfoot>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<SpendingGroup> Groups { get; set; } = Array.Empty<SpendingGroup>();
+
+    /// <summary>Column headings: what the groups are, and what the lines within them are.</summary>
+    [Parameter] public string GroupBy { get; set; } = "Feature";
+    [Parameter] public string LineBy { get; set; } = "Model";
+
+    private static RenderFragment Figures(SpendingLine line) =>
+        @<text>
+            <td class="kn-num">@line.Calls.ToString("N0")</td>
+            <td class="kn-num">@line.Failed.ToString("N0")</td>
+            <td class="kn-num">@line.InputTokens.ToString("N0")</td>
+            <td class="kn-num">@line.OutputTokens.ToString("N0")</td>
+            <td class="kn-num">@CostBarChart.Money(line.Cost)@(line.HasUnpriced ? " + unpriced" : "")</td>
+        </text>;
+}

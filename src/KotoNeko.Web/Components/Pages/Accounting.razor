@@ -1,0 +1,103 @@
+@page "/accounting"
+@using System.Globalization
+@using KotoNeko.Core.Llm
+@inject AccountingService Spending
+
+<PageTitle>Accounting · KotoNeko</PageTitle>
+
+<div class="kn-toolbar" style="justify-content:space-between">
+    <h1 style="margin:0">Accounting</h1>
+    <label class="kn-hint">
+        Tables by
+        <select class="kn-select" style="width:auto; display:inline-block" @bind="_groupBy">
+            <option value="feature">feature, then model</option>
+            <option value="model">model, then feature</option>
+        </select>
+    </label>
+</div>
+<p class="kn-hint">
+    What the LLM calls have cost: drafting, generating sentences, grading and the eval, from the call log.
+    Each call's cost is worked out from <span class="kn-code">Llm:Prices</span> in appsettings.json when it's made
+    (dollars per million tokens; thinking counts as output). Failed calls that used tokens are counted too.
+    Speech audio (Google TTS) isn't included.
+</p>
+
+@if (_report is null)
+{
+    <p class="kn-empty">Loading…</p>
+}
+else
+{
+    @if (_report.UnpricedModels.Count > 0)
+    {
+        <div class="kn-msg kn-msg-err">
+            No price for @string.Join(", ", _report.UnpricedModels), so its calls show tokens but no cost.
+            Add it to <span class="kn-code">Llm:Prices</span> and reload this page: past calls are priced then.
+        </div>
+    }
+
+    <div class="kn-accounting-totals">
+        <div class="kn-panel"><div class="kn-accounting-figure">@CostBarChart.Money(_report.Last30Total)</div><div class="kn-hint">last 30 days</div></div>
+        <div class="kn-panel"><div class="kn-accounting-figure">@CostBarChart.Money(_report.ThisMonth)</div><div class="kn-hint">this month</div></div>
+        <div class="kn-panel"><div class="kn-accounting-figure">@CostBarChart.Money(_report.YearTotal)</div><div class="kn-hint">@_report.Year</div></div>
+        <div class="kn-panel"><div class="kn-accounting-figure">@CostBarChart.Money(_report.AllTime)</div><div class="kn-hint">all time</div></div>
+    </div>
+
+    <div class="kn-panel">
+        <h2>Last 30 days</h2>
+        <CostBarChart Title="Cost per day, last 30 days" Bars="DailyBars()" />
+        <SpendingTable Groups="@(_byModel ? _report.Last30ByModel : _report.Last30ByFeature)" GroupBy="@GroupBy" LineBy="@LineBy" />
+    </div>
+
+    <div class="kn-panel">
+        <div class="kn-toolbar" style="justify-content:space-between">
+            <h2 style="margin:0">By month</h2>
+            <select class="kn-select" style="max-width:120px" @bind="_year" @bind:after="LoadAsync">
+                @foreach (int y in _report.Years)
+                {
+                    <option value="@y">@y</option>
+                }
+            </select>
+        </div>
+        <CostBarChart Title="@($"Cost per month, {_report.Year}")" Bars="MonthlyBars()" />
+        <SpendingTable Groups="@(_byModel ? _report.YearByModel : _report.YearByFeature)" GroupBy="@GroupBy" LineBy="@LineBy" />
+    </div>
+}
+
+@code {
+    private AccountingReport? _report;
+    private int _year = DateTime.Now.Year;
+    private string _groupBy = "feature";
+
+    private bool _byModel => _groupBy == "model";
+
+    private string GroupBy => _byModel ? "Model" : "Feature";
+    private string LineBy => _byModel ? "Feature" : "Model";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _report = await Spending.ReportAsync(_year, DateTime.UtcNow);
+    }
+
+    private List<CostBarChart.ChartBar> DailyBars() =>
+        _report!.Last30Days.Select((d, i) => new CostBarChart.ChartBar(
+            // Label every fifth day, counting back from today so today is labelled.
+            (_report.Last30Days.Count - 1 - i) % 5 == 0 ? d.Start.ToString("MMM d", CultureInfo.InvariantCulture) : null,
+            Tooltip(d.Start.ToString("ddd MMM d", CultureInfo.InvariantCulture), d),
+            d.Cost)).ToList();
+
+    private List<CostBarChart.ChartBar> MonthlyBars() =>
+        _report!.Months.Select(m => new CostBarChart.ChartBar(
+            m.Start.ToString("MMM", CultureInfo.InvariantCulture),
+            Tooltip(m.Start.ToString("MMMM yyyy", CultureInfo.InvariantCulture), m),
+            m.Cost)).ToList();
+
+    private static string Tooltip(string when, CostPeriod p) =>
+        $"{when}: {CostBarChart.Money(p.Cost)} · {p.Calls:N0} call{(p.Calls == 1 ? "" : "s")} · {p.InputTokens:N0} in, {p.OutputTokens:N0} out" +
+        (p.UnpricedTokens > 0 ? $" · {p.UnpricedTokens:N0} tokens unpriced" : "");
+}

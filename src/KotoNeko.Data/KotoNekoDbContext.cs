@@ -329,6 +329,7 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.Model).HasMaxLength(100).IsRequired();
             entity.Property(e => e.PromptVersion).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Error).HasMaxLength(500);
+            entity.Property(e => e.Cost).HasPrecision(14, 8);
             entity.HasIndex(e => e.CalledAt);
         });
 

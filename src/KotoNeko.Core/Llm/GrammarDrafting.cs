@@ -113,7 +113,7 @@ public static class GrammarDrafting
             ? "Examples the point already has (don't repeat them):\n" + string.Join("\n", have.Select(s => $"- {s}"))
             : "Examples the point already has: none.");
 
-        return new LlmRequest(LlmJob.Generate, PromptVersion, System, prompt.ToString(), "grammar_lesson_content", Schema(), MaxTokens: 12000);
+        return new LlmRequest(LlmJob.Generate, LlmFeature.GrammarDrafting, PromptVersion, System, prompt.ToString(), "grammar_lesson_content", Schema(), MaxTokens: 12000);
     }
 
     /// <summary>Whether the draft is usable at all: null when it is, else what's wrong.</summary>

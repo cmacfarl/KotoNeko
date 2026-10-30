@@ -1186,3 +1186,21 @@ kbd {
 .kn-lesson-verdict-pass { background: #f1f8e4; border-left: 4px solid var(--kn-correct-dark); }
 .kn-lesson-verdict-miss { background: #fdecea; border-left: 4px solid var(--kn-incorrect-dark); }
 .kn-lesson-verdict-head { font-weight: 600; margin-bottom: 0.3rem; }
+
+/* Accounting: headline totals, cost charts and the per-model tables. */
+.kn-accounting-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.kn-accounting-totals .kn-panel { margin-bottom: 1rem; text-align: center; }
+.kn-accounting-figure { font-size: 1.6rem; font-weight: 600; color: var(--kn-ink); }
+.kn-chart { width: 100%; height: auto; display: block; margin: 0.5rem 0 1rem; }
+.kn-chart-grid { stroke: #eeeeee; stroke-width: 1; }
+.kn-chart-base { stroke: #cccccc; stroke-width: 1; }
+.kn-chart-tick { font-size: 11px; fill: var(--kn-muted); font-family: var(--kn-font); }
+.kn-chart-bar { fill: var(--kn-enlightened); }
+.kn-chart-hit { fill: transparent; }
+.kn-chart-col:hover .kn-chart-hit { fill: rgba(0, 0, 0, 0.04); }
+.kn-chart-col:hover .kn-chart-bar { fill: #0078b5; }
+.kn-accounting-table .kn-num, .kn-accounting-table th.kn-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kn-accounting-table tfoot td { font-weight: 600; border-top: 1px solid var(--kn-border); }
+.kn-accounting-group { border-top: 1px solid var(--kn-border); }
+.kn-accounting-group-name { font-weight: 600; vertical-align: top; }
+.kn-accounting-subtotal td { font-weight: 600; }

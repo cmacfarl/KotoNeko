@@ -33,6 +33,7 @@ public class SentenceGenerationTests
     {
         LlmRequest request = SentenceGeneration.Build(Meet, Array.Empty<string>(), Array.Empty<(string, string)>(), Array.Empty<string>());
 
+        Assert.Equal(LlmFeature.PracticeSentences, request.Feature);
         Assert.Contains("none recorded yet", request.Prompt);
         Assert.Contains("basic N5 grammar", request.Prompt);
         Assert.Contains("Existing sentences for this word: none.", request.Prompt);

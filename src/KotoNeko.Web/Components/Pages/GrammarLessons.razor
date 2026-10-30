@@ -315,7 +315,7 @@ else
         StateHasChanged();
         try {
             GradingTask task = new(entry.Pattern, entry.Meaning, _point.Situations[_round].Situation, sentence);
-            LlmResult<GradingVerdict> result = await Grading.GradeAsync(task, cancellationToken: _cts.Token);
+            LlmResult<GradingVerdict> result = await Grading.GradeAsync(task, LlmFeature.LessonGrading, cancellationToken: _cts.Token);
             _verdict = result.Value;
             _checked = sentence;
             if (_verdict.TargetUsedCorrectly) {

@@ -978,12 +978,19 @@ namespace KotoNeko.Data.Migrations
                     b.Property<DateTime>("CalledAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<decimal?>("Cost")
+                        .HasPrecision(14, 8)
+                        .HasColumnType("decimal(14,8)");
+
                     b.Property<int>("DurationMs")
                         .HasColumnType("int");
 
                     b.Property<string>("Error")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<int>("Feature")
+                        .HasColumnType("int");
 
                     b.Property<int>("InputTokens")
                         .HasColumnType("int");
