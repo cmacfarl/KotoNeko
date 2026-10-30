@@ -39,6 +39,10 @@ else
                 <input class="kn-input" type="number" min="0" max="500" @bind="_settings.DailyLessonCap" />
             </div>
             <div class="kn-form-row">
+                <label>New grammar lessons per day (0 pauses them)</label>
+                <input class="kn-input" type="number" min="0" max="20" @bind="_settings.DailyGrammarCap" />
+            </div>
+            <div class="kn-form-row">
                 <label>Items per lesson session</label>
                 <input class="kn-input" type="number" min="1" max="50" @bind="_settings.LessonBatchSize" />
             </div>

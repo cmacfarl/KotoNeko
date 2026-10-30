@@ -30,6 +30,9 @@ public class KotoNekoDbContext : DbContext
     public DbSet<PracticeSentence> PracticeSentences => Set<PracticeSentence>();
     public DbSet<PracticeSentenceAudio> PracticeSentenceAudios => Set<PracticeSentenceAudio>();
     public DbSet<GrammarListEntry> GrammarList => Set<GrammarListEntry>();
+    public DbSet<GrammarPoint> GrammarPoints => Set<GrammarPoint>();
+    public DbSet<GrammarExample> GrammarExamples => Set<GrammarExample>();
+    public DbSet<GrammarExampleAudio> GrammarExampleAudios => Set<GrammarExampleAudio>();
     public DbSet<LlmCall> LlmCalls => Set<LlmCall>();
     public DbSet<GradingTestItem> GradingTestItems => Set<GradingTestItem>();
     public DbSet<GradingEvalRun> GradingEvalRuns => Set<GradingEvalRun>();
@@ -221,7 +224,7 @@ public class KotoNekoDbContext : DbContext
             entity.HasIndex(e => new { e.VocabularyId, e.Status });
         });
 
-        // The grammar list (not study items: Phase 4's grammar points link to it by SeedKey).
+        // The grammar list (not study items: a grammar point links to its entry by id).
         modelBuilder.Entity<GrammarListEntry>(entity =>
         {
             entity.ToTable("GrammarList");
@@ -231,6 +234,40 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.Meaning).HasMaxLength(GrammarListEntry.MaxMeaningLength).IsRequired();
             entity.HasIndex(e => e.SeedKey).IsUnique();
             entity.HasIndex(e => new { e.Level, e.SortOrder });
+        });
+
+        // Grammar points as study items (Phase 4). Pattern, meaning and level stay on the
+        // list entry; contrasts, mistakes and situations are small lists stored as JSON.
+        modelBuilder.Entity<GrammarPoint>(entity =>
+        {
+            entity.ToTable("GrammarPoints");
+            entity.Property(e => e.Explanation).HasMaxLength(GrammarPoint.MaxExplanationLength).IsRequired();
+            entity.Property(e => e.Formation).HasMaxLength(GrammarPoint.MaxFormationLength).IsRequired();
+            entity.Property(e => e.DraftedBy).HasMaxLength(GrammarPoint.MaxDraftedByLength);
+            entity.Property(e => e.Contrasts).HasColumnType("text").IsRequired().AsJsonList();
+            entity.Property(e => e.Mistakes).HasColumnType("text").IsRequired().AsJsonList();
+            entity.Property(e => e.Situations).HasColumnType("text").IsRequired().AsJsonList();
+            entity.HasOne(e => e.Entry)
+                .WithMany()
+                .HasForeignKey(e => e.GrammarListEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.GrammarListEntryId).IsUnique();
+            entity.HasMany(e => e.Examples)
+                .WithOne(x => x.GrammarPoint)
+                .HasForeignKey(x => x.GrammarPointId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GrammarExample>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Text).HasMaxLength(GrammarExample.MaxTextLength).IsRequired();
+            entity.Property(e => e.English).HasMaxLength(GrammarExample.MaxEnglishLength).IsRequired();
+            entity.HasOne(e => e.Audio)
+                .WithOne(a => a.GrammarExample)
+                .HasForeignKey<GrammarExampleAudio>(a => a.GrammarExampleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.GrammarPointId, e.SortOrder });
         });
 
         // The grading test set (Phase 3): labelled sentences and the eval runs scored against them.
@@ -300,6 +337,13 @@ public class KotoNekoDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Audio).HasColumnType("longblob").IsRequired();
             entity.HasIndex(e => e.PracticeSentenceId).IsUnique();
+        });
+
+        modelBuilder.Entity<GrammarExampleAudio>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Audio).HasColumnType("longblob").IsRequired();
+            entity.HasIndex(e => e.GrammarExampleId).IsUnique();
         });
 
         modelBuilder.Entity<DictionaryMeaning>(entity =>

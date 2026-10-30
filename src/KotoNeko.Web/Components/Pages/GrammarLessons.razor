@@ -1,0 +1,396 @@
+@page "/grammar-lessons"
+@implements IDisposable
+@using KotoNeko.Core.Llm
+@using KotoNeko.Llm
+@inject GrammarPointService Points
+@inject GradingService Grading
+@inject IJSRuntime JS
+
+<PageTitle>Grammar lessons · KotoNeko</PageTitle>
+
+@if (_loading)
+{
+    <p class="kn-empty">Loading…</p>
+}
+else if (_finished is { } done)
+{
+    <div class="kn-session-done">
+        <div class="big">🎉</div>
+        <h1>@done learned</h1>
+        <p>It's in your SRS now. Grammar reviews (writing your own sentences) arrive with the composition tutor.</p>
+        @if (_allowance is { LeftToday: > 0 } && _nextAvailable)
+        {
+            <button class="kn-btn kn-btn-primary" @onclick="NextAsync">Next grammar lesson</button>
+        }
+        <a class="kn-btn" href="/">Back to dashboard</a>
+    </div>
+}
+else if (_allowance is { LeftToday: 0 })
+{
+    <div class="kn-session-done">
+        <div class="big">🌙</div>
+        <h1>That's today's grammar lessons</h1>
+        <p>You've learned @_allowance.DoneToday of your @_allowance.Cap new grammar points today.</p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+        <a class="kn-btn" href="/settings">Change the daily cap</a>
+    </div>
+}
+else if (_point is null)
+{
+    <div class="kn-session-done">
+        <div class="big">📚</div>
+        <h1>No grammar lessons waiting</h1>
+        <p>A grammar point joins the lessons when you approve its lesson content.</p>
+        <a class="kn-btn kn-btn-primary" href="/grammar">Write or draft a lesson</a>
+    </div>
+}
+else
+{
+    GrammarListEntry entry = _point.Entry!;
+    <div class="kn-lesson">
+        <div class="kn-lesson-head">
+            <span class="kn-lesson-pattern">@entry.Pattern</span>
+            <span class="kn-lesson-meaning">@entry.Meaning</span>
+            <span class="kn-pill kn-pill-jlpt">@entry.Level</span>
+            @if (_point.Formality != GrammarFormality.Neutral)
+            {
+                <span class="kn-pill">@_point.Formality</span>
+            }
+        </div>
+        <div class="kn-lesson-steps">
+            @for (int i = 0; i < Steps.Length; i++)
+            {
+                int step = i;
+                <button class="kn-lesson-step @(step == _step ? "kn-lesson-step-on" : "")" @onclick="() => _step = step">@Steps[step]</button>
+            }
+        </div>
+
+        @if (_step == 0)
+        {
+            <div class="kn-panel">
+                @foreach (string paragraph in Paragraphs(_point.Explanation))
+                {
+                    <p>@paragraph</p>
+                }
+                <h3>How it attaches</h3>
+                <ul class="kn-lesson-formation">
+                    @foreach (string rule in GrammarContent.FormationRules(_point.Formation))
+                    {
+                        <li class="kn-grammar-pattern">@rule</li>
+                    }
+                </ul>
+            </div>
+        }
+        else if (_step == 1)
+        {
+            <div class="kn-panel">
+                @foreach (GrammarExampleView item in _examples)
+                {
+                    <div class="kn-practice-sentence">
+                        <div class="kn-practice-text">
+                            @if (item.View is { } view)
+                            {
+                                <FuriganaText Pieces="view.ForReader(_known)" />
+                            }
+                            else
+                            {
+                                <span class="kn-jp">@item.Example.Text</span>
+                            }
+                            @if (item.Example.HasAudio)
+                            {
+                                <button class="kn-btn kn-btn-sm" style="margin-left:0.6rem" @onclick="() => PlayAsync(item)">▶</button>
+                            }
+                        </div>
+                        <div class="kn-practice-english">@item.Example.English</div>
+                    </div>
+                }
+            </div>
+        }
+        else if (_step == 2)
+        {
+            <div class="kn-panel">
+                @if (_point.Contrasts.Count > 0)
+                {
+                    <h3>Not to be confused with</h3>
+                    <table class="kn-table">
+                        @foreach (GrammarContrast c in _point.Contrasts)
+                        {
+                            <tr><td class="kn-grammar-pattern" style="white-space:nowrap">@c.Pattern</td><td>@c.Difference</td></tr>
+                        }
+                    </table>
+                }
+                @if (_point.Mistakes.Count > 0)
+                {
+                    <h3>Common mistakes</h3>
+                    @foreach (GrammarMistake m in _point.Mistakes)
+                    {
+                        <div class="kn-grammar-row">
+                            <div class="kn-jp"><span class="kn-lesson-wrong">✗</span> @m.Wrong</div>
+                            <div class="kn-jp"><span class="kn-lesson-right">✓</span> @m.Right</div>
+                            <div class="kn-hint">@m.Why</div>
+                        </div>
+                    }
+                }
+                @if (_point.Contrasts.Count == 0 && _point.Mistakes.Count == 0)
+                {
+                    <p class="kn-empty">Nothing to compare yet.</p>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="kn-panel">
+                @if (_round < _point.Situations.Count)
+                {
+                    GrammarSituation situation = _point.Situations[_round];
+                    <p class="kn-hint">Your turn, @(_round + 1) of @_point.Situations.Count. Practice only: nothing here changes the SRS.</p>
+                    <p class="kn-lesson-situation">@situation.Situation</p>
+                    @if (situation.Hint.Length > 0)
+                    {
+                        <p class="kn-hint">Hint: <span class="kn-grammar-pattern">@situation.Hint</span></p>
+                    }
+                    @if (Grading.Route is not { IsConfigured: true })
+                    {
+                        <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so your sentences can't be checked. You can still finish the lesson.</div>
+                    }
+                    <JapaneseInput @ref="_input" @key="_round" AutoFocus="true" Placeholder="Your sentence…"
+                                   OnChanged="t => _typed = t.Text" OnSubmit="CheckAsync" />
+                    <div class="kn-toolbar">
+                        @if (_verdict is null)
+                        {
+                            <button class="kn-btn kn-btn-primary" disabled="@(_grading || Grading.Route is not { IsConfigured: true })" @onclick="CheckAsync">
+                                @(_grading ? "Checking…" : "Check")
+                            </button>
+                            <button class="kn-btn" disabled="@_grading" @onclick="SkipSituation" title="Move on without having this one checked">Skip this one</button>
+                        }
+                        else
+                        {
+                            @if (!_verdict.TargetUsedCorrectly)
+                            {
+                                <button class="kn-btn kn-btn-primary" @onclick="TryAgainAsync">Try again</button>
+                            }
+                            <button class="kn-btn @(_verdict.TargetUsedCorrectly ? "kn-btn-primary" : "")" @onclick="NextSituation">Next</button>
+                        }
+                    </div>
+                    @if (_gradeError is not null)
+                    {
+                        <div class="kn-msg kn-msg-err">
+                            Your sentence couldn't be checked: @_gradeError
+                            <button class="kn-btn kn-btn-sm" disabled="@_grading" @onclick="CheckAsync">Retry</button>
+                        </div>
+                    }
+                    @if (_verdict is { } v)
+                    {
+                        <div class="kn-lesson-verdict @(v.TargetUsedCorrectly ? "kn-lesson-verdict-pass" : "kn-lesson-verdict-miss")">
+                            <div class="kn-lesson-verdict-head">
+                                @(v.TargetUsedCorrectly ? (v.Natural ? "✓ Correct" : "✓ Correct, but a native speaker would say it differently") : "✗ Not quite")
+                                <span class="kn-hint">(@v.Confidence confidence)</span>
+                            </div>
+                            <p>@v.Explanation</p>
+                            @if (!string.IsNullOrWhiteSpace(v.NaturalRewrite) && (!v.TargetUsedCorrectly || !v.Natural || v.NaturalRewrite != _checked))
+                            {
+                                <p>Natural: <span class="kn-jp">@v.NaturalRewrite</span></p>
+                            }
+                            @if (v.Errors is { Count: > 0 } errors)
+                            {
+                                <ul>
+                                    @foreach (GradingError e in errors)
+                                    {
+                                        <li><span class="kn-jp">@e.Span → @e.Correction</span> <span class="kn-hint">(@e.Category)</span> @e.Explanation</li>
+                                    }
+                                </ul>
+                            }
+                            @if (v.TargetUsedCorrectly && _savedNote is not null)
+                            {
+                                <p class="kn-hint">@_savedNote</p>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p>That's the guided round: @_passed of @_point.Situations.Count passed@(_skipped > 0 ? $", {_skipped} skipped" : "").</p>
+                }
+            </div>
+        }
+
+        @if (_finishError is not null)
+        {
+            <div class="kn-msg kn-msg-err">@_finishError</div>
+        }
+        <div class="kn-toolbar">
+            @if (_step < Steps.Length - 1)
+            {
+                <button class="kn-btn kn-btn-primary" @onclick="() => _step++">Next: @Steps[_step + 1]</button>
+            }
+            else if (_round >= _point.Situations.Count)
+            {
+                <button class="kn-btn kn-btn-primary" disabled="@_busy" @onclick="FinishAsync">Finish lesson</button>
+            }
+            else
+            {
+                <button class="kn-btn" disabled="@(_busy || _grading)" @onclick="FinishAsync"
+                        title="Learn the point without doing (the rest of) the guided round">Finish without the round</button>
+            }
+            <a class="kn-btn" href="/grammar/point/@_point.Id">Edit this lesson</a>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] Steps = { "Meaning", "Examples", "Compare", "Your turn" };
+
+    private GrammarPoint? _point;
+    private List<GrammarExampleView> _examples = new();
+    private HashSet<string> _known = new();
+    private GrammarAllowance? _allowance;
+    private bool _loading = true;
+    private bool _busy;
+    private int _step;
+
+    private JapaneseInput? _input;
+    private int _round;
+    private string _typed = "";
+    private string _checked = "";
+    private bool _grading;
+    private GradingVerdict? _verdict;
+    private string? _gradeError;
+    private string? _savedNote;
+    private int _passed;
+    private int _skipped;
+
+    private string? _finished;
+    private bool _nextAvailable;
+    private string? _finishError;
+    private CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNextAsync();
+    }
+
+    private async Task LoadNextAsync()
+    {
+        _loading = true;
+        _point = null;
+        _finished = null;
+        _finishError = null;
+        _step = 0;
+        _round = 0;
+        _passed = 0;
+        _skipped = 0;
+        ResetRound();
+        _allowance = await Points.GetAllowanceAsync(DateTime.UtcNow);
+        if (_allowance.LeftToday > 0 && await Points.NextLessonAsync() is int id && await Points.GetAsync(id) is { } point) {
+            _point = point;
+            _examples = await Points.ExampleViewsAsync(point.Examples.Where(x => x.Status == GrammarContentStatus.Approved).ToList());
+            _known = await Points.KnownWordsAsync();
+        }
+        _loading = false;
+    }
+
+    private Task NextAsync() => LoadNextAsync();
+
+    private void ResetRound()
+    {
+        _typed = "";
+        _checked = "";
+        _verdict = null;
+        _gradeError = null;
+        _savedNote = null;
+    }
+
+    private async Task CheckAsync()
+    {
+        if (_point is null || _grading || _verdict is not null || _round >= _point.Situations.Count) {
+            return;
+        }
+        string sentence = GrammarContent.CleanSentence(_typed);
+        if (sentence.Length == 0) {
+            return;
+        }
+        GrammarListEntry entry = _point.Entry!;
+        _grading = true;
+        _gradeError = null;
+        StateHasChanged();
+        try {
+            GradingTask task = new(entry.Pattern, entry.Meaning, _point.Situations[_round].Situation, sentence);
+            LlmResult<GradingVerdict> result = await Grading.GradeAsync(task, cancellationToken: _cts.Token);
+            _verdict = result.Value;
+            _checked = sentence;
+            if (_verdict.TargetUsedCorrectly) {
+                _passed++;
+                // A sentence of your own that passed goes in the point's sentence bank, as a
+                // draft: the grader can pass a wrong sentence, so it waits for your OK.
+                (bool added, _) = await Points.AddExampleAsync(_point.Id, sentence, "", GrammarExampleSource.Composition,
+                    GrammarContentStatus.Draft, voice: false);
+                _savedNote = added ? "Saved to this point's examples as a draft composition; approve it on the lesson's edit page." : null;
+            }
+        } catch (LlmException ex) {
+            _gradeError = ex.Message;
+        } catch (OperationCanceledException) {
+            return;
+        } finally {
+            _grading = false;
+        }
+    }
+
+    private async Task TryAgainAsync()
+    {
+        ResetRound();
+        if (_input is not null) {
+            await _input.ClearAsync();
+            await _input.FocusAsync();
+        }
+    }
+
+    private void NextSituation()
+    {
+        _round++;
+        ResetRound();
+    }
+
+    private void SkipSituation()
+    {
+        _skipped++;
+        _round++;
+        ResetRound();
+    }
+
+    private async Task FinishAsync()
+    {
+        if (_point is null) {
+            return;
+        }
+        _busy = true;
+        try {
+            if (await Points.CompleteLessonAsync(_point.Id, DateTime.UtcNow) is { } error) {
+                _finishError = error;
+                return;
+            }
+            _finished = _point.Entry!.Pattern;
+            _allowance = await Points.GetAllowanceAsync(DateTime.UtcNow);
+            _nextAvailable = await Points.NextLessonAsync() is not null;
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task PlayAsync(GrammarExampleView item)
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.playAudio", item.AudioUrl);
+        } catch {
+            // Playing is a nicety; the sentence is on screen.
+        }
+    }
+
+    private static IEnumerable<string> Paragraphs(string text) =>
+        text.Replace("\r\n", "\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

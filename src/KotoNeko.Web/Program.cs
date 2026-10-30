@@ -54,6 +54,7 @@ builder.Services.AddHttpClient(KnownWordsService.HttpClientName, client =>
 builder.Services.AddScoped<KnownWordsService>();
 builder.Services.AddScoped<PracticeSentenceService>();
 builder.Services.AddScoped<GrammarService>();
+builder.Services.AddScoped<GrammarPointService>();
 builder.Services.AddScoped<GradingTestService>();
 
 // LLM providers (KotoNeko.Llm). Keys come from appsettings.Development.json
@@ -61,6 +62,7 @@ builder.Services.AddScoped<GradingTestService>();
 // each job uses is in appsettings.json (Llm:Jobs). Every call is logged in LlmCalls.
 builder.Services.AddKotoNekoLlm(builder.Configuration);
 builder.Services.AddScoped<SentenceGenerationService>();
+builder.Services.AddScoped<GrammarDraftingService>();
 
 // Sentence readings (furigana) are generated in the background, never mid-review.
 builder.Services.AddSingleton<SentenceReadingService>();
@@ -178,6 +180,11 @@ app.MapGet("/api/vocab/{id:int}/audio/sentence", async (int id, IDbContextFactor
 
 app.MapGet("/api/practice-sentence/{id:int}/audio", async (int id, PracticeSentenceService sentences) =>
     await sentences.GetAudioAsync(id) is { Length: > 0 } bytes
+        ? Results.File(bytes, "audio/mpeg")
+        : Results.NotFound());
+
+app.MapGet("/api/grammar-example/{id:int}/audio", async (int id, GrammarPointService grammar) =>
+    await grammar.GetExampleAudioAsync(id) is { Length: > 0 } bytes
         ? Results.File(bytes, "audio/mpeg")
         : Results.NotFound());
 

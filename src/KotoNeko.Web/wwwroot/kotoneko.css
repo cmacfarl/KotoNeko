@@ -105,6 +105,24 @@ h1, h2, h3 {
     flex: 1;
 }
 
+.kn-nav-menu { position: relative; }
+.kn-nav-menu > summary { list-style: none; cursor: pointer; user-select: none; }
+.kn-nav-menu > summary::-webkit-details-marker { display: none; }
+.kn-nav-menu-items {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 170px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.35rem;
+    background: var(--kn-nav);
+    border: 1px solid var(--kn-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
 .kn-page {
     max-width: 1080px;
     margin: 0 auto;
@@ -133,7 +151,7 @@ h1, h2, h3 {
 /* ===== Dashboard ===== */
 .kn-cta-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 1rem;
     margin-bottom: 1.25rem;
 }
@@ -166,6 +184,10 @@ h1, h2, h3 {
 
 .kn-cta-lessons {
     background: linear-gradient(to bottom, #f15ca8, var(--kn-apprentice));
+}
+
+.kn-cta-grammar {
+    background: linear-gradient(to bottom, #b07ad8, var(--kn-guru));
 }
 
 .kn-cta-reviews {
@@ -1125,6 +1147,7 @@ kbd {
 .kn-listening-sentence { font-size: 1.2rem; line-height: 2.1; margin-top: 0.3rem; }
 .kn-good-text { color: var(--kn-correct-dark); font-size: 0.85rem; }
 .kn-grammar-pattern { font-family: var(--kn-font-jp, inherit); font-size: 1.05rem; }
+.kn-grammar-row { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.6rem 0; border-top: 1px solid var(--kn-border, #e5e5e5); }
 
 /* Proofreading page: large sentences, one card each. */
 .kn-proofread { max-width: 760px; }
@@ -1143,3 +1166,23 @@ kbd {
 .kn-grading-task { margin: 0.2rem 0; }
 .kn-grading-sentence { font-size: 1.6rem; line-height: 1.6; margin: 0.3rem 0 0.6rem; }
 .kn-grading-votes { margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #f6f6f8; border-radius: 6px; font-size: 0.9rem; }
+
+/* Grammar lessons: the point, its steps, and the guided round's verdicts. */
+.kn-lesson { max-width: 860px; }
+.kn-lesson-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.8rem; margin-bottom: 0.8rem; }
+.kn-lesson-pattern { font-family: var(--kn-font-jp, inherit); font-size: 2.2rem; font-weight: 600; }
+.kn-lesson-meaning { font-size: 1.2rem; color: #555; }
+.kn-lesson-steps { display: flex; gap: 0.4rem; margin-bottom: 0.8rem; }
+.kn-lesson-step {
+    border: 1px solid var(--kn-border, #e5e5e5); background: #fff; border-radius: 999px;
+    padding: 0.25rem 0.9rem; cursor: pointer; color: #555;
+}
+.kn-lesson-step-on { background: #333; border-color: #333; color: #fff; }
+.kn-lesson-formation { margin: 0.3rem 0 0; padding-left: 1.3rem; line-height: 1.9; }
+.kn-lesson-situation { font-size: 1.15rem; line-height: 1.5; }
+.kn-lesson-wrong { color: var(--kn-incorrect-dark); font-weight: 700; }
+.kn-lesson-right { color: var(--kn-correct-dark); font-weight: 700; }
+.kn-lesson-verdict { border-radius: 6px; padding: 0.6rem 0.9rem; margin-top: 0.8rem; }
+.kn-lesson-verdict-pass { background: #f1f8e4; border-left: 4px solid var(--kn-correct-dark); }
+.kn-lesson-verdict-miss { background: #fdecea; border-left: 4px solid var(--kn-incorrect-dark); }
+.kn-lesson-verdict-head { font-weight: 600; margin-bottom: 0.3rem; }

@@ -1,0 +1,412 @@
+@page "/grammar/point/{Id:int}"
+@implements IDisposable
+@using KotoNeko.Core.Llm
+@using KotoNeko.Llm
+@using KotoNeko.Web.Services.Llm
+@inject GrammarPointService Points
+@inject GrammarDraftingService Drafting
+@inject IJSRuntime JS
+
+<PageTitle>@(_point?.Entry?.Pattern ?? "Grammar point") · KotoNeko</PageTitle>
+
+@if (_loading)
+{
+    <p class="kn-empty">Loading…</p>
+}
+else if (_point is null)
+{
+    <div class="kn-panel"><p class="kn-empty">That grammar point no longer exists. <a href="/grammar">Back to the grammar list</a>.</p></div>
+}
+else
+{
+    GrammarListEntry entry = _point.Entry!;
+    <p><a href="/grammar">← Grammar list</a></p>
+    <h1><span class="kn-grammar-pattern">@entry.Pattern</span> <span class="kn-hint" style="font-size:1rem">@entry.Meaning · @entry.Level</span></h1>
+    <div class="kn-toolbar">
+        <span class="kn-pill @(_point.Status == GrammarContentStatus.Approved ? "kn-pill-known" : "")">@(_point.Status == GrammarContentStatus.Approved ? "Approved" : "Draft")</span>
+        @if (_point.Srs is not null)
+        {
+            <span class="kn-pill kn-pill-stage">Learned</span>
+        }
+        @if (_point.DraftedBy is { } by)
+        {
+            <span class="kn-hint">Drafted by @by</span>
+        }
+    </div>
+
+    @if (_message is not null)
+    {
+        <div class="kn-msg @(_messageIsError ? "kn-msg-err" : "kn-msg-ok")">@_message</div>
+    }
+
+    <div class="kn-panel">
+        <h2>Draft with an LLM</h2>
+        @if (Drafting.Route is { IsConfigured: true } route)
+        {
+            <p class="kn-hint">
+                Asks @route.Provider · @route.Model (the Generate job) for the explanation, how it attaches, the register, contrasts,
+                common mistakes, @GrammarDrafting.ExampleCount examples and @GrammarDrafting.SituationCount guided-round situations.
+                It replaces the content below; examples are added as drafts for you to approve. Nothing is taught until you approve the point.
+            </p>
+            <button class="kn-btn kn-btn-primary" @onclick="DraftAsync" disabled="@_busy">@(_drafting ? "Drafting…" : "✎ Draft lesson content")</button>
+        }
+        else
+        {
+            <p class="kn-hint">No LLM is configured for the Generate job (Llm:Jobs:Generate), so write the content yourself below.</p>
+        }
+    </div>
+
+    <div class="kn-panel">
+        <h2>Lesson content</h2>
+        <div class="kn-form-row">
+            <label>What it means and does</label>
+            <textarea class="kn-textarea" rows="8" @bind="_explanation" placeholder="Paragraphs separated by a blank line."></textarea>
+        </div>
+        <div class="kn-form-row">
+            <label>How it attaches (one rule per line)</label>
+            <textarea class="kn-textarea kn-grammar-pattern" rows="@Math.Max(3, GrammarContent.FormationRules(_formation).Count + 1)" @bind="_formation"
+                      placeholder="Verb (plain) + のに&#10;Noun / な-adjective + な + のに"></textarea>
+        </div>
+        <div class="kn-form-row">
+            <label>Register</label>
+            <select class="kn-select" style="max-width:200px" @bind="_formality">
+                @foreach (GrammarFormality f in Enum.GetValues<GrammarFormality>())
+                {
+                    <option value="@f">@f</option>
+                }
+            </select>
+        </div>
+
+        <h3>Similar points</h3>
+        @foreach (ContrastRow row in _contrasts)
+        {
+            <div class="kn-toolbar">
+                <input class="kn-input kn-jp" style="max-width:180px" placeholder="〜けど" @bind="row.Pattern" />
+                <input class="kn-input" placeholder="How it differs" @bind="row.Difference" />
+                <button class="kn-btn kn-btn-sm" @onclick="() => _contrasts.Remove(row)">Remove</button>
+            </div>
+        }
+        <button class="kn-btn kn-btn-sm" @onclick="() => _contrasts.Add(new ContrastRow())">+ Similar point</button>
+
+        <h3>Common mistakes</h3>
+        @foreach (MistakeRow row in _mistakes)
+        {
+            <div class="kn-grammar-row">
+                <input class="kn-input kn-jp" placeholder="Wrong sentence" @bind="row.Wrong" />
+                <input class="kn-input kn-jp" placeholder="Corrected sentence" @bind="row.Right" />
+                <div class="kn-toolbar">
+                    <input class="kn-input" placeholder="Why" @bind="row.Why" />
+                    <button class="kn-btn kn-btn-sm" @onclick="() => _mistakes.Remove(row)">Remove</button>
+                </div>
+            </div>
+        }
+        <button class="kn-btn kn-btn-sm" @onclick="() => _mistakes.Add(new MistakeRow())">+ Mistake</button>
+
+        <h3>Guided-round situations</h3>
+        <p class="kn-hint">
+            The lesson ends with a round of these: you write a sentence for each and the grader checks it against the situation exactly as written,
+            so say who the speaker is, their circumstances and how they feel about it. The hint gives the shape of the answer.
+        </p>
+        @foreach (SituationRow row in _situations)
+        {
+            <div class="kn-grammar-row">
+                <textarea class="kn-textarea" rows="2" placeholder="Situation and what to say" @bind="row.Situation"></textarea>
+                <div class="kn-toolbar">
+                    <input class="kn-input" placeholder="Hint: Verb (past) + のに, then what happened" @bind="row.Hint" />
+                    <button class="kn-btn kn-btn-sm" @onclick="() => _situations.Remove(row)">Remove</button>
+                </div>
+            </div>
+        }
+        <button class="kn-btn kn-btn-sm" @onclick="() => _situations.Add(new SituationRow())">+ Situation</button>
+
+        <div class="kn-toolbar" style="margin-top:1rem">
+            <button class="kn-btn kn-btn-primary" @onclick="SaveAsync" disabled="@_busy">Save content</button>
+        </div>
+    </div>
+
+    <div class="kn-panel">
+        <h2>Examples</h2>
+        @if (_examples.Count == 0)
+        {
+            <p class="kn-empty">No examples yet.</p>
+        }
+        @foreach (GrammarExampleView item in _examples)
+        {
+            GrammarExample x = item.Example;
+            <div class="kn-practice-sentence @(x.Status == GrammarContentStatus.Approved ? "" : "kn-practice-unused")">
+                <div class="kn-practice-text">
+                    @if (item.View is { } view)
+                    {
+                        <FuriganaText Pieces="view.ForReader(_known)" />
+                    }
+                    else
+                    {
+                        <span class="kn-jp">@x.Text</span>
+                    }
+                </div>
+                <div class="kn-practice-meta">
+                    <span class="kn-pill @(x.Status == GrammarContentStatus.Approved ? "kn-pill-known" : "")">@(x.Status == GrammarContentStatus.Approved ? "Approved" : "Draft")</span>
+                    <span class="kn-hint">@SourceLabel(x.Source)</span>
+                </div>
+                @if (item.Unknown.Count > 0)
+                {
+                    <div class="kn-practice-unknown">
+                        <span class="kn-hint">Not in your known words:</span>
+                        @foreach (UnknownWord u in item.Unknown)
+                        {
+                            <span class="kn-unknown-word">@u.Text</span>
+                        }
+                    </div>
+                }
+                @if (_editing == x.Id)
+                {
+                    <div class="kn-form-row"><input class="kn-input kn-jp" style="font-size:1.2rem" @bind="_editText" /></div>
+                    <div class="kn-form-row"><input class="kn-input" placeholder="English" @bind="_editEnglish" /></div>
+                    <div class="kn-toolbar">
+                        <button class="kn-btn kn-btn-sm kn-btn-primary" @onclick="() => SaveExampleAsync(x)">Save</button>
+                        <button class="kn-btn kn-btn-sm" @onclick="() => _editing = null">Cancel</button>
+                        <span class="kn-hint">Changing the sentence drops its audio.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="kn-practice-english">@x.English</div>
+                }
+                <div class="kn-toolbar">
+                    @if (x.HasAudio)
+                    {
+                        <button class="kn-btn kn-btn-sm" @onclick="() => PlayAsync(item)">▶ Play</button>
+                    }
+                    <button class="kn-btn kn-btn-sm" disabled="@_busy" @onclick="() => GenerateAudioAsync(x)">@(x.HasAudio ? "↻ Regenerate audio" : "▶ Generate audio")</button>
+                    @if (x.Status == GrammarContentStatus.Approved)
+                    {
+                        <button class="kn-btn kn-btn-sm" disabled="@_busy" @onclick="() => SetExampleStatusAsync(x, GrammarContentStatus.Draft)">Withdraw</button>
+                    }
+                    else
+                    {
+                        <button class="kn-btn kn-btn-sm kn-btn-primary" disabled="@_busy" @onclick="() => SetExampleStatusAsync(x, GrammarContentStatus.Approved)"
+                                title="Use it in the lesson (and voice it, if it has no audio)">Approve</button>
+                    }
+                    @if (_editing != x.Id)
+                    {
+                        <button class="kn-btn kn-btn-sm" @onclick="() => StartEditing(x)">Edit</button>
+                    }
+                    <button class="kn-btn kn-btn-sm kn-btn-danger" disabled="@_busy" @onclick="() => DeleteExampleAsync(x)">Delete</button>
+                </div>
+            </div>
+        }
+
+        <h3>Add an example</h3>
+        <div class="kn-form-row"><input class="kn-input kn-jp" style="font-size:1.2rem" placeholder="日本語の例文" @bind="_newText" /></div>
+        <div class="kn-form-row"><input class="kn-input" placeholder="English" @bind="_newEnglish" /></div>
+        <button class="kn-btn" disabled="@_busy" @onclick="AddExampleAsync">Add (approved)</button>
+    </div>
+
+    <div class="kn-panel">
+        <h2>Approval</h2>
+        @if (_point.Status == GrammarContentStatus.Approved)
+        {
+            <p>Approved: @(_point.Srs is null ? "the point is in the lesson queue." : "you've learned it; changes show the next time you open it.")</p>
+            <button class="kn-btn" disabled="@_busy" @onclick="() => SetStatusAsync(GrammarContentStatus.Draft)">Back to draft</button>
+        }
+        else
+        {
+            @if (GrammarContent.ApprovalProblems(_point) is { Count: > 0 } problems)
+            {
+                <ul class="kn-hint">
+                    @foreach (string p in problems)
+                    {
+                        <li>@p</li>
+                    }
+                </ul>
+            }
+            <p class="kn-hint">Approving puts it in the grammar lesson queue. Save your edits first.</p>
+            <button class="kn-btn kn-btn-primary" disabled="@_busy" @onclick="() => SetStatusAsync(GrammarContentStatus.Approved)">Approve the point</button>
+        }
+        @if (_point.Srs is null)
+        {
+            <button class="kn-btn kn-btn-danger" disabled="@_busy" @onclick="DeleteAsync">Delete this lesson content</button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private sealed class ContrastRow { public string Pattern { get; set; } = ""; public string Difference { get; set; } = ""; }
+    private sealed class MistakeRow { public string Wrong { get; set; } = ""; public string Right { get; set; } = ""; public string Why { get; set; } = ""; }
+    private sealed class SituationRow { public string Situation { get; set; } = ""; public string Hint { get; set; } = ""; }
+
+    private GrammarPoint? _point;
+    private List<GrammarExampleView> _examples = new();
+    private HashSet<string> _known = new();
+    private string _explanation = "";
+    private string _formation = "";
+    private GrammarFormality _formality;
+    private List<ContrastRow> _contrasts = new();
+    private List<MistakeRow> _mistakes = new();
+    private List<SituationRow> _situations = new();
+    private int? _editing;
+    private string _editText = "";
+    private string _editEnglish = "";
+    private string _newText = "";
+    private string _newEnglish = "";
+    private bool _loading = true;
+    private bool _busy;
+    private bool _drafting;
+    private string? _message;
+    private bool _messageIsError;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await LoadAsync(content: true);
+        _loading = false;
+    }
+
+    private async Task LoadAsync(bool content)
+    {
+        _point = await Points.GetAsync(Id);
+        if (_point is null) {
+            return;
+        }
+        if (content) {
+            _explanation = _point.Explanation;
+            _formation = string.Join("\n", GrammarContent.FormationRules(_point.Formation));
+            _formality = _point.Formality;
+            _contrasts = _point.Contrasts.Select(c => new ContrastRow { Pattern = c.Pattern, Difference = c.Difference }).ToList();
+            _mistakes = _point.Mistakes.Select(m => new MistakeRow { Wrong = m.Wrong, Right = m.Right, Why = m.Why }).ToList();
+            _situations = _point.Situations.Select(s => new SituationRow { Situation = s.Situation, Hint = s.Hint }).ToList();
+        }
+        _examples = await Points.ExampleViewsAsync(_point.Examples);
+        _known = await Points.KnownWordsAsync();
+    }
+
+    private void Show(string? message, bool error = false)
+    {
+        _message = message;
+        _messageIsError = error;
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try {
+            await action();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private Task DraftAsync() => RunAsync(async () => {
+        _drafting = true;
+        Show(null);
+        StateHasChanged();
+        try {
+            string message = await Drafting.DraftAsync(Id, _cts.Token);
+            await LoadAsync(content: true);
+            Show(message);
+        } catch (LlmException ex) {
+            Show($"Drafting failed: {ex.Message}", error: true);
+        } catch (InvalidOperationException ex) {
+            Show(ex.Message, error: true);
+        } catch (OperationCanceledException) {
+        } finally {
+            _drafting = false;
+        }
+    });
+
+    private Task SaveAsync() => RunAsync(async () => {
+        string? error = await Points.SaveContentAsync(Id, _explanation, _formation, _formality,
+            _contrasts.Select(c => new GrammarContrast(c.Pattern, c.Difference)),
+            _mistakes.Select(m => new GrammarMistake(m.Wrong, m.Right, m.Why)),
+            _situations.Select(s => new GrammarSituation(s.Situation, s.Hint)));
+        Show(error ?? "Saved.", error is not null);
+        if (error is null) {
+            await LoadAsync(content: true);
+        }
+    });
+
+    private Task SetStatusAsync(GrammarContentStatus status) => RunAsync(async () => {
+        string? error = await Points.SetStatusAsync(Id, status);
+        Show(error ?? (status == GrammarContentStatus.Approved ? "Approved: it's in the grammar lesson queue." : "Back to draft: lessons won't teach it until you approve it again."),
+            error is not null);
+        await LoadAsync(content: false);
+    });
+
+    private Task DeleteAsync() => RunAsync(async () => {
+        string? error = await Points.DeleteAsync(Id);
+        if (error is null) {
+            Nav.NavigateTo("/grammar");
+        } else {
+            Show(error, error: true);
+        }
+    });
+
+    private Task AddExampleAsync() => RunAsync(async () => {
+        (bool added, string? message) = await Points.AddExampleAsync(Id, _newText, _newEnglish, GrammarExampleSource.Yours, GrammarContentStatus.Approved);
+        Show(message ?? (added ? "Example added." : null), message is not null);
+        if (added) {
+            _newText = "";
+            _newEnglish = "";
+            await LoadAsync(content: false);
+        }
+    });
+
+    private void StartEditing(GrammarExample x)
+    {
+        _editing = x.Id;
+        _editText = x.Text;
+        _editEnglish = x.English;
+    }
+
+    private Task SaveExampleAsync(GrammarExample x) => RunAsync(async () => {
+        string? error = await Points.UpdateExampleAsync(x.Id, _editText, _editEnglish);
+        Show(error, error is not null);
+        if (error is null) {
+            _editing = null;
+            await LoadAsync(content: false);
+        }
+    });
+
+    private Task SetExampleStatusAsync(GrammarExample x, GrammarContentStatus status) => RunAsync(async () => {
+        string? note = await Points.SetExampleStatusAsync(x.Id, status);
+        Show(note, note is not null);
+        await LoadAsync(content: false);
+    });
+
+    private Task DeleteExampleAsync(GrammarExample x) => RunAsync(async () => {
+        await Points.DeleteExampleAsync(x.Id);
+        await LoadAsync(content: false);
+    });
+
+    private Task GenerateAudioAsync(GrammarExample x) => RunAsync(async () => {
+        string? note = await Points.GenerateExampleAudioAsync(x.Id);
+        Show(note, note is not null);
+        await LoadAsync(content: false);
+    });
+
+    private async Task PlayAsync(GrammarExampleView item)
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.playAudio", item.AudioUrl);
+        } catch {
+            Show("The audio couldn't be played.", error: true);
+        }
+    }
+
+    private static string SourceLabel(GrammarExampleSource source) => source switch {
+        GrammarExampleSource.Yours => "Yours",
+        GrammarExampleSource.Generated => "Drafted by an LLM",
+        GrammarExampleSource.Composition => "Your composition",
+        _ => source.ToString(),
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

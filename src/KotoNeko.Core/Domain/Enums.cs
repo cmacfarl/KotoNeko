@@ -9,7 +9,7 @@ public enum StudyItemKind
     /// <summary>A single kanji (planned; no derived type yet).</summary>
     Kanji = 1,
 
-    /// <summary>A grammar point (planned; no derived type yet).</summary>
+    /// <summary>A grammar point: <see cref="Domain.GrammarPoint"/>.</summary>
     Grammar = 2,
 }
 

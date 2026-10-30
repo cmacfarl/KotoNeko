@@ -8,14 +8,21 @@
         </a>
         <a class="kn-nav-link @ActiveClass("", true)" href="/">Dashboard</a>
         <a class="kn-nav-link @ActiveClass("lessons")" href="/lessons">Lessons</a>
+        <a class="kn-nav-link @ActiveClass("grammar-lessons")" href="/grammar-lessons">Grammar lessons</a>
         <a class="kn-nav-link @ActiveClass("reviews")" href="/reviews">Reviews</a>
         <a class="kn-nav-link @ActiveClass("dictation")" href="/dictation">Dictation</a>
         <span class="kn-nav-spacer"></span>
-        <a class="kn-nav-link @ActiveClass("vocab")" href="/vocab">Vocabulary</a>
-        <a class="kn-nav-link @ActiveClass("known-words")" href="/known-words">Known words</a>
-        <a class="kn-nav-link @ActiveClass("grammar")" href="/grammar">Grammar</a>
-        <a class="kn-nav-link @ActiveClass("sources")" href="/sources">Sources</a>
-        <a class="kn-nav-link @ActiveClass("settings")" href="/settings">Settings</a>
+        @* Everything that isn't study goes under one menu. Keyed on the page, so it closes after a pick. *@
+        <details class="kn-nav-menu" @key="CurrentRelative">
+            <summary class="kn-nav-link @(ManageActive ? "active" : "")">Manage ▾</summary>
+            <div class="kn-nav-menu-items">
+                <a class="kn-nav-link @ActiveClass("vocab")" href="/vocab">Vocabulary</a>
+                <a class="kn-nav-link @ActiveClass("known-words")" href="/known-words">Known words</a>
+                <a class="kn-nav-link @GrammarListClass" href="/grammar">Grammar</a>
+                <a class="kn-nav-link @ActiveClass("sources")" href="/sources">Sources</a>
+                <a class="kn-nav-link @ActiveClass("settings")" href="/settings">Settings</a>
+            </div>
+        </details>
     </div>
 </nav>
 
@@ -31,6 +38,14 @@
     {
         InvokeAsync(StateHasChanged);
     }
+
+    // /grammar-lessons is study; only the grammar list and its lesson editor are "Grammar".
+    private string GrammarListClass =>
+        CurrentRelative.StartsWith("grammar-lessons", StringComparison.OrdinalIgnoreCase) ? "" : ActiveClass("grammar");
+
+    private bool ManageActive =>
+        new[] { ActiveClass("vocab"), ActiveClass("known-words"), GrammarListClass, ActiveClass("sources"), ActiveClass("settings") }
+            .Any(c => c.Length > 0);
 
     private string ActiveClass(string segment, bool exact = false)
     {

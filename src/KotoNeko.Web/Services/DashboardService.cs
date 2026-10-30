@@ -35,6 +35,14 @@ public class DashboardSummary
     /// <summary>Lessons that can be started now: available, within today's cap.</summary>
     public int LessonsOpenNow => Math.Min(LessonsAvailable, LessonsLeftToday);
 
+    /// <summary>Approved grammar points waiting for their lesson.</summary>
+    public int GrammarLessonsAvailable { get; init; }
+
+    /// <summary>Grammar lessons the daily grammar cap still allows today.</summary>
+    public int GrammarLessonsLeftToday { get; init; }
+
+    public int GrammarLessonsOpenNow => Math.Min(GrammarLessonsAvailable, GrammarLessonsLeftToday);
+
     /// <summary>Recent accuracy hearing words (listening questions).</summary>
     public Accuracy ByEar { get; init; } = new(0, 0);
 
@@ -76,11 +84,15 @@ public class DashboardService
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
 
-        int total = await db.StudyItems.CountAsync();
-        int asleep = await db.StudyItems.CountAsync(i => i.IsAsleep);
-        int lessons = await db.StudyItems.CountAsync(i => !i.IsAsleep && i.Srs == null);
+        // Vocabulary only: grammar points have their own lessons and (from Phase 5) reviews.
+        IQueryable<StudyItem> words = db.StudyItems.Where(i => i.Kind == StudyItemKind.Vocabulary);
+        IQueryable<SrsItem> wordSrs = db.SrsItems.Where(s => s.StudyItem!.Kind == StudyItemKind.Vocabulary);
 
-        int due = await db.SrsItems.CountAsync(s =>
+        int total = await words.CountAsync();
+        int asleep = await words.CountAsync(i => i.IsAsleep);
+        int lessons = await words.CountAsync(i => !i.IsAsleep && i.Srs == null);
+
+        int due = await wordSrs.CountAsync(s =>
             !s.StudyItem!.IsAsleep
             && s.Stage != SrsStage.Locked
             && s.Stage != SrsStage.Burned
@@ -88,7 +100,7 @@ public class DashboardService
             && s.NextReviewAt <= now);
 
         // Counts by SRS stage -> rolled into bands.
-        List<StageCount> stageCounts = await db.SrsItems
+        List<StageCount> stageCounts = await wordSrs
             .Where(s => !s.StudyItem!.IsAsleep)
             .GroupBy(s => s.Stage)
             .Select(g => new StageCount(g.Key, g.Count()))
@@ -131,7 +143,7 @@ public class DashboardService
 
         // Upcoming sessions: items that become due group into a session by their
         // shared availability time. Take the next few sessions, soonest first.
-        List<DateTime> upcoming = await db.SrsItems
+        List<DateTime> upcoming = await wordSrs
             .Where(s => !s.StudyItem!.IsAsleep
                 && s.NextReviewAt != null
                 && s.NextReviewAt > now)
@@ -146,6 +158,8 @@ public class DashboardService
             .ToList();
 
         LessonAllowance allowance = await ReviewService.GetLessonAllowanceAsync(db, now);
+        GrammarAllowance grammarAllowance = await GrammarPointService.GetAllowanceAsync(db, now);
+        int grammarLessons = await GrammarPointService.CountLessonsAvailableAsync(db);
 
         DateTime accuracySince = now - AccuracyWindow;
         Accuracy byEar = await AccuracyAsync(db, accuracySince, ListeningTypes);
@@ -158,6 +172,8 @@ public class DashboardService
             DueNow = due,
             LessonsAvailable = lessons,
             LessonsLeftToday = allowance.LeftToday,
+            GrammarLessonsAvailable = grammarLessons,
+            GrammarLessonsLeftToday = grammarAllowance.LeftToday,
             ByEar = byEar,
             BySight = bySight,
             EarGaps = earGaps,

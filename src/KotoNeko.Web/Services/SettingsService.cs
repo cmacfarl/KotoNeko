@@ -32,6 +32,7 @@ public class SettingsService
 
         row.DailyMinutesTarget = Math.Clamp(input.DailyMinutesTarget, 5, 600);
         row.DailyLessonCap = Math.Clamp(input.DailyLessonCap, 0, 500);
+        row.DailyGrammarCap = Math.Clamp(input.DailyGrammarCap, 0, 20);
         row.LessonBatchSize = Math.Clamp(input.LessonBatchSize, 1, 50);
         row.DailyDictationCap = Math.Clamp(input.DailyDictationCap, 0, 200);
         row.ListeningEnabled = input.ListeningEnabled;

@@ -1,5 +1,7 @@
 @page "/grammar"
 @inject GrammarService Grammar
+@inject GrammarPointService Points
+@inject NavigationManager Nav
 
 <PageTitle>Grammar · KotoNeko</PageTitle>
 
@@ -10,6 +12,10 @@
     The list was drafted for KotoNeko and checked against JLPT Sensei's published lists. There's no official JLPT grammar list,
     so the levels are the usual placements and the list is meant to be pruned. Remove what doesn't belong, mark what you know,
     and add anything missing.
+</p>
+<p class="kn-hint">
+    <strong>Lesson</strong> is a point's lesson content: write it yourself or draft it with an LLM, then approve it, and it joins the
+    <a href="/grammar-lessons">grammar lessons</a> queue.
 </p>
 
 @if (_message is not null)
@@ -93,6 +99,7 @@
                 <th>Meaning</th>
                 <th style="white-space:nowrap">Level</th>
                 <th style="white-space:nowrap">Status</th>
+                <th style="white-space:nowrap">Lesson</th>
                 <th></th>
             </tr>
             </thead>
@@ -112,6 +119,7 @@
                                 }
                             </select>
                         </td>
+                        <td></td>
                         <td></td>
                         <td style="text-align:right;white-space:nowrap">
                             <button class="kn-btn kn-btn-sm kn-btn-primary" @onclick="() => SaveEditAsync(e)">Save</button>
@@ -134,6 +142,16 @@
                                     <option value="@GrammarStatus.Studying">Studying</option>
                                     <option value="@GrammarStatus.NotYet">Not yet</option>
                                 </select>
+                            }
+                        </td>
+                        <td style="white-space:nowrap">
+                            @if (_lessons.GetValueOrDefault(e.Id) is { } lesson)
+                            {
+                                <a class="kn-btn kn-btn-sm" href="/grammar/point/@lesson.PointId">@LessonLabel(lesson)</a>
+                            }
+                            else if (!_pruned)
+                            {
+                                <button class="kn-btn kn-btn-sm" @onclick="() => OpenLessonAsync(e)" title="Write or draft this point's lesson">Write lesson</button>
                             }
                         </td>
                         <td style="text-align:right;white-space:nowrap">
@@ -164,6 +182,7 @@ else
 @code {
     private List<GrammarListEntry> _entries = new();
     private Dictionary<(JlptLevel Level, GrammarStatus Status), int> _counts = new();
+    private Dictionary<int, GrammarPointSummary> _lessons = new();
     private int _draftedNotAdded;
     private string _search = string.Empty;
     private string _level = string.Empty;
@@ -193,6 +212,21 @@ else
             _pruned, _search);
         _counts = await Grammar.CountsAsync();
         _draftedNotAdded = await Grammar.DraftedNotAddedAsync();
+        _lessons = await Points.SummariesAsync();
+    }
+
+    private static string LessonLabel(GrammarPointSummary lesson) =>
+        lesson.Learned ? "Learned"
+        : lesson.Status == GrammarContentStatus.Approved ? "Approved"
+        : "Draft";
+
+    private async Task OpenLessonAsync(GrammarListEntry entry)
+    {
+        if (await Points.EnsureForEntryAsync(entry.Id) is int id) {
+            Nav.NavigateTo($"/grammar/point/{id}");
+        } else {
+            Show("That grammar point no longer exists.", error: true);
+        }
     }
 
     private int Count(JlptLevel level, GrammarStatus status) => _counts.GetValueOrDefault((level, status));

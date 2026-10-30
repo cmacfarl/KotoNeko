@@ -18,6 +18,9 @@ public class StudySettings
     /// <summary>New vocabulary lessons allowed per (local) day. 0 pauses lessons.</summary>
     public int DailyLessonCap { get; set; } = 15;
 
+    /// <summary>New grammar lessons allowed per (local) day, apart from vocabulary's cap. 0 pauses them.</summary>
+    public int DailyGrammarCap { get; set; } = 2;
+
     /// <summary>How many items one lesson session teaches.</summary>
     public int LessonBatchSize { get; set; } = 5;
 

@@ -460,6 +460,72 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("GradingTestItems");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarExample", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("English")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("GrammarPointId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasAudio")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GrammarPointId", "SortOrder");
+
+                    b.ToTable("GrammarExamples");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarExampleAudio", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte[]>("Audio")
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<int>("GrammarExampleId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GrammarExampleId")
+                        .IsUnique();
+
+                    b.ToTable("GrammarExampleAudios");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.GrammarListEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -805,6 +871,9 @@ namespace KotoNeko.Data.Migrations
                     b.Property<int>("DailyDictationCap")
                         .HasColumnType("int");
 
+                    b.Property<int>("DailyGrammarCap")
+                        .HasColumnType("int");
+
                     b.Property<int>("DailyLessonCap")
                         .HasColumnType("int");
 
@@ -835,6 +904,7 @@ namespace KotoNeko.Data.Migrations
                         {
                             Id = 1,
                             DailyDictationCap = 10,
+                            DailyGrammarCap = 2,
                             DailyLessonCap = 15,
                             DailyMinutesTarget = 60,
                             KnownWordStage = 5,
@@ -947,6 +1017,54 @@ namespace KotoNeko.Data.Migrations
                     b.HasIndex("CalledAt");
 
                     b.ToTable("LlmCalls");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarPoint", b =>
+                {
+                    b.HasBaseType("KotoNeko.Core.Domain.StudyItem");
+
+                    b.Property<string>("Contrasts")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DraftedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<int>("Formality")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Formation")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("GrammarListEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Mistakes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Situations")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasIndex("GrammarListEntryId")
+                        .IsUnique();
+
+                    b.ToTable("GrammarPoints", (string)null);
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>
@@ -1069,6 +1187,28 @@ namespace KotoNeko.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarExample", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.GrammarPoint", "GrammarPoint")
+                        .WithMany("Examples")
+                        .HasForeignKey("GrammarPointId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GrammarPoint");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarExampleAudio", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.GrammarExample", "GrammarExample")
+                        .WithOne("Audio")
+                        .HasForeignKey("KotoNeko.Core.Domain.GrammarExampleAudio", "GrammarExampleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GrammarExample");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>
                 {
                     b.HasOne("KotoNeko.Core.Domain.Vocabulary", "Vocabulary")
@@ -1135,6 +1275,23 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("Vocabulary");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarPoint", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.GrammarListEntry", "Entry")
+                        .WithMany()
+                        .HasForeignKey("GrammarListEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("KotoNeko.Core.Domain.StudyItem", null)
+                        .WithOne()
+                        .HasForeignKey("KotoNeko.Core.Domain.GrammarPoint", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Entry");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>
                 {
                     b.HasOne("KotoNeko.Core.Domain.StudyItem", null)
@@ -1161,6 +1318,11 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("Results");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarExample", b =>
+                {
+                    b.Navigation("Audio");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>
                 {
                     b.Navigation("Audio");
@@ -1176,6 +1338,11 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("ReviewLogs");
 
                     b.Navigation("Srs");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarPoint", b =>
+                {
+                    b.Navigation("Examples");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.Vocabulary", b =>

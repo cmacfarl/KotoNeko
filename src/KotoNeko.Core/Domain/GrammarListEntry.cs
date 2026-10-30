@@ -11,8 +11,8 @@ public enum GrammarStatus
 /// <summary>
 /// One grammar point on the user's list: its pattern, a short meaning, its JLPT
 /// level and whether the user knows it. Sentence generation keeps to the Known
-/// points. This is the list only; grammar points as SRS study items (Phase 4)
-/// link to an entry by its <see cref="SeedKey"/>.
+/// points. This is the list only; a grammar point as an SRS study item
+/// (<see cref="GrammarPoint"/>) links to its entry by id.
 /// </summary>
 public class GrammarListEntry
 {

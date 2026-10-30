@@ -30,12 +30,16 @@ public class ReviewService
         _sentences = sentences;
     }
 
-    /// <summary>Count of items currently due for review.</summary>
+    /// <summary>
+    /// Count of vocabulary items currently due for review. Grammar points have their
+    /// own reviews (Phase 5), so they're never counted here.
+    /// </summary>
     public async Task<int> CountDueReviewsAsync(DateTime now)
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
         return await db.SrsItems
-            .Where(s => !s.StudyItem!.IsAsleep
+            .Where(s => s.StudyItem!.Kind == StudyItemKind.Vocabulary
+                && !s.StudyItem!.IsAsleep
                 && s.Stage != SrsStage.Locked
                 && s.Stage != SrsStage.Burned
                 && s.NextReviewAt != null
@@ -43,18 +47,18 @@ public class ReviewService
             .CountAsync();
     }
 
-    /// <summary>Count of items waiting to be learned (no SRS row yet).</summary>
+    /// <summary>Count of vocabulary items waiting to be learned (no SRS row yet).</summary>
     public async Task<int> CountAvailableLessonsAsync()
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
         return await db.StudyItems
-            .Where(i => !i.IsAsleep && i.Srs == null)
+            .Where(i => i.Kind == StudyItemKind.Vocabulary && !i.IsAsleep && i.Srs == null)
             .CountAsync();
     }
 
     /// <summary>
-    /// Today's lesson cap and how much of it is used. A lesson counts on the
-    /// (local) day its item was unlocked.
+    /// Today's vocabulary lesson cap and how much of it is used. A lesson counts on
+    /// the (local) day its item was unlocked. Grammar lessons have their own cap.
     /// </summary>
     public async Task<LessonAllowance> GetLessonAllowanceAsync(DateTime now)
     {
@@ -66,7 +70,8 @@ public class ReviewService
     {
         StudySettings settings = await SettingsService.LoadAsync(db);
         DateTime dayStart = SettingsService.StartOfLocalDay(now);
-        int doneToday = await db.SrsItems.CountAsync(s => s.UnlockedAt != null && s.UnlockedAt >= dayStart);
+        int doneToday = await db.SrsItems.CountAsync(s =>
+            s.StudyItem!.Kind == StudyItemKind.Vocabulary && s.UnlockedAt != null && s.UnlockedAt >= dayStart);
         return new LessonAllowance(settings.DailyLessonCap, doneToday, settings.LessonBatchSize);
     }
 

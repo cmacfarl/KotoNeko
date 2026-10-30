@@ -30,6 +30,16 @@ else
                 }
             </div>
         </a>
+        <a class="kn-cta kn-cta-grammar @(_summary.GrammarLessonsOpenNow == 0 ? "kn-cta-disabled" : "")" href="/grammar-lessons">
+            <div class="kn-cta-count">@_summary.GrammarLessonsOpenNow</div>
+            <div class="kn-cta-label">
+                Grammar lessons
+                @if (_summary.GrammarLessonsAvailable > _summary.GrammarLessonsOpenNow)
+                {
+                    <span>· daily cap (@_summary.GrammarLessonsAvailable waiting)</span>
+                }
+            </div>
+        </a>
         <a class="kn-cta kn-cta-reviews @(_summary.DueNow == 0 ? "kn-cta-disabled" : "")" href="/reviews">
             <div class="kn-cta-count">@_summary.DueNow</div>
             <div class="kn-cta-label">Reviews</div>
