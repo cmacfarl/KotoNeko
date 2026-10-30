@@ -58,4 +58,34 @@ public class GrammarReviewAttempt
     public string VerdictJson { get; set; } = string.Empty;
 
     public string PromptVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// For a Master review's second sentence: the similar point it was written with
+    /// (one of the point's contrasts). Null for a sentence with the point itself.
+    /// </summary>
+    public string? ContrastPattern { get; set; }
+
+    /// <summary>A second grader's verdict, asked because the first was an unsure miss; null when not asked.</summary>
+    public string? SecondVerdictJson { get; set; }
+
+    /// <summary>Who gave the second opinion (provider · model).</summary>
+    public string? SecondModel { get; set; }
+
+    /// <summary>Whether the learner disputed the verdict (a fresh second opinion, with their comment).</summary>
+    public bool Disputed { get; set; }
+
+    /// <summary>What the learner said when disputing; empty when they said nothing.</summary>
+    public string DisputeComment { get; set; } = string.Empty;
+
+    public string? DisputeVerdictJson { get; set; }
+    public string? DisputeModel { get; set; }
+
+    /// <summary>
+    /// The review's miss was overturned by a dispute and counted as a pass. <see cref="Effect"/>
+    /// and <see cref="StageAfter"/> keep what the first verdict did.
+    /// </summary>
+    public bool Overturned { get; set; }
+
+    public const int MaxModelLength = 200;
+    public const int MaxContrastLength = 100;
 }

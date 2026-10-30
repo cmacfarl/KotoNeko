@@ -52,6 +52,9 @@ public static class LlmAccounting
         LlmFeature.GradingEval => "Grading eval",
         LlmFeature.Prelabelling => "Test-set pre-labelling",
         LlmFeature.ReviewGrading => "Grammar review grading",
+        LlmFeature.SecondOpinion => "Second opinion (unsure miss)",
+        LlmFeature.Dispute => "Disputed verdict",
+        LlmFeature.WhyQuestion => "\"Why?\" questions",
         _ => "Other",
     };
 

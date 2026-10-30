@@ -193,6 +193,10 @@ else
                                 <p class="kn-hint">@_savedNote</p>
                             }
                         </GradingVerdictView>
+                        @if (_gradedTask is not null)
+                        {
+                            <WhyQuestions @key="_gradedTask" Graded="_gradedTask" Verdict="v" />
+                        }
                     }
                 }
                 else
@@ -243,6 +247,7 @@ else
     private string _checked = "";
     private readonly List<string> _written = new();
     private string? _problem;
+    private GradingTask? _gradedTask;
     private bool _grading;
     private GradingVerdict? _verdict;
     private string? _gradeError;
@@ -292,6 +297,7 @@ else
         _gradeError = null;
         _problem = null;
         _savedNote = null;
+        _gradedTask = null;
     }
 
     private async Task CheckAsync()
@@ -318,6 +324,7 @@ else
             GradingTask task = new(entry.Pattern, entry.Meaning, "", sentence, intent);
             LlmResult<GradingVerdict> result = await Grading.GradeAsync(task, LlmFeature.LessonGrading, cancellationToken: _cts.Token);
             _verdict = result.Value;
+            _gradedTask = task;
             _checked = sentence;
             _written.Add(sentence);
             if (_verdict.TargetUsedCorrectly) {

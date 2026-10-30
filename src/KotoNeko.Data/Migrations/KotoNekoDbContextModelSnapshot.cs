@@ -590,6 +590,25 @@ namespace KotoNeko.Data.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
 
+                    b.Property<string>("ContrastPattern")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("DisputeComment")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("DisputeModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("DisputeVerdictJson")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Disputed")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<int>("Effect")
                         .HasColumnType("int");
 
@@ -604,10 +623,20 @@ namespace KotoNeko.Data.Migrations
                     b.Property<bool>("Natural")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("Overturned")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("PromptVersion")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<string>("SecondModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("SecondVerdictJson")
+                        .HasColumnType("text");
 
                     b.Property<string>("Sentence")
                         .IsRequired()

@@ -23,4 +23,15 @@ public sealed class GradingService
     public Task<LlmResult<GradingVerdict>> GradeAsync(
         GradingTask task, LlmFeature feature, string? effort = null, CancellationToken cancellationToken = default) =>
         _llm.CallWithUsageAsync<GradingVerdict>(Grading.Build(task, feature) with { Effort = effort }, Grading.Validate, cancellationToken);
+
+    /// <summary>Where second opinions go (the Recheck job), or null when no route is set.</summary>
+    public LlmRoute? RecheckRoute => _llm.Route(LlmJob.Recheck);
+
+    /// <summary>
+    /// A second, independent verdict on a sentence. <paramref name="comment"/> is the
+    /// learner's note on a disputed verdict. Throws <see cref="LlmException"/> when there's no usable verdict.
+    /// </summary>
+    public Task<LlmResult<GradingVerdict>> RecheckAsync(
+        GradingTask task, LlmFeature feature, string comment = "", CancellationToken cancellationToken = default) =>
+        _llm.CallWithUsageAsync<GradingVerdict>(Grading.BuildRecheck(task, feature, comment), Grading.Validate, cancellationToken);
 }

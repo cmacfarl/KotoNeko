@@ -5,6 +5,7 @@
 @using KotoNeko.Web.Services.Llm
 @inject GrammarPointService Points
 @inject GrammarDraftingService Drafting
+@inject GrammarReviewService Reviews
 @inject IJSRuntime JS
 
 <PageTitle>@(_point?.Entry?.Pattern ?? "Grammar point") · KotoNeko</PageTitle>
@@ -229,6 +230,47 @@ else
             <button class="kn-btn kn-btn-danger" disabled="@_busy" @onclick="DeleteAsync">Delete this lesson content</button>
         }
     </div>
+
+    @if (_checked.Count > 0)
+    {
+        <div class="kn-panel">
+            <h2>Second opinions and disputes</h2>
+            <p class="kn-hint">
+                Review sentences where the grader wasn't sure and a second grader was asked, or that you disputed. Worth a look
+                with a native speaker.
+            </p>
+            @foreach (CheckedAttempt a in _checked)
+            {
+                <div class="kn-grammar-row">
+                    <div>
+                        <span class="kn-jp">@a.Sentence</span>
+                        @if (a.ContrastPattern is not null)
+                        {
+                            <span class="kn-hint"> (with @a.ContrastPattern)</span>
+                        }
+                        <span class="kn-hint"> · @a.AttemptedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
+                        @if (a.Overturned)
+                        {
+                            <span class="kn-pill kn-pill-known">overturned: counted as a pass</span>
+                        }
+                    </div>
+                    @if (a.Intent.Length > 0)
+                    {
+                        <div class="kn-hint">You meant: @a.Intent</div>
+                    }
+                    <div class="kn-hint">Grader: @Verdict(a.First)</div>
+                    @if (a.Second is not null)
+                    {
+                        <div class="kn-hint">Second opinion (@a.SecondModel): @Verdict(a.Second)</div>
+                    }
+                    @if (a.Disputed)
+                    {
+                        <div class="kn-hint">Disputed@(a.DisputeComment.Length > 0 ? $" (\"{a.DisputeComment}\")" : "") · @a.DisputeModel: @Verdict(a.DisputeVerdict)</div>
+                    }
+                </div>
+            }
+        </div>
+    }
 }
 
 @code {
@@ -283,7 +325,13 @@ else
         }
         _examples = await Points.ExampleViewsAsync(_point.Examples);
         _known = await Points.KnownWordsAsync();
+        _checked = await Reviews.CheckedAttemptsAsync(_point.Id);
     }
+
+    private List<CheckedAttempt> _checked = new();
+
+    private static string Verdict(GradingVerdict? v) => v is null ? "(unreadable)"
+        : $"{(v.TargetUsedCorrectly ? "✓ correct" : "✗ not quite")} ({v.Confidence} confidence). {v.Explanation}";
 
     private void Show(string? message, bool error = false)
     {

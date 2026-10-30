@@ -35,6 +35,7 @@ else
 {
     GrammarPoint point = _item.Point;
     GrammarListEntry entry = point.Entry!;
+    ContrastChoice? contrast = _item.Contrast;
     <div class="kn-lesson">
         <p class="kn-hint">Grammar review @(_session.Total - _session.Remaining + 1) of @_session.Total · @SrsSchedule.DisplayName(_stage)</p>
         <div class="kn-lesson-head">
@@ -56,21 +57,48 @@ else
         }
 
         <div class="kn-panel">
-            <p>Write a sentence of your own with <span class="kn-grammar-pattern">@entry.Pattern</span>. Anything you like.</p>
+            @if (contrast is null)
+            {
+                <p>Write a sentence of your own with <span class="kn-grammar-pattern">@entry.Pattern</span>. Anything you like.</p>
+            }
+            else
+            {
+                <p>
+                    Write two sentences of your own: one with <span class="kn-grammar-pattern">@entry.Pattern</span>, and one with
+                    the similar <span class="kn-grammar-pattern">@contrast.Pattern</span>, each where it fits. Using both shows you know the difference.
+                </p>
+            }
             <CompositionIdeas @key="point.Id" Ideas="point.Situations" ShowHints="_item.Cues.Formation" />
             @if (Reviews.Route is not { IsConfigured: true })
             {
                 <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so reviews can't be checked. Set it up and come back; your points stay due.</div>
             }
-            <JapaneseInput @ref="_input" @key="_round" AutoFocus="true" Placeholder="Your sentence…"
-                           OnChanged="t => _typed = t.Text" OnSubmit="CheckAsync" />
+
+            @if (contrast is not null)
+            {
+                <div class="kn-review-label">With <span class="kn-grammar-pattern">@entry.Pattern</span></div>
+            }
+            <JapaneseInput @ref="_input" @key="(_round, 0)" AutoFocus="true" Placeholder="Your sentence…"
+                           OnChanged="t => _typed[0] = t.Text" OnSubmit="CheckAsync" />
             <label class="kn-hint kn-review-intent">
                 What you mean (optional, in English): helps the grader judge your sentence as you meant it.
-                <input class="kn-input" maxlength="@GrammarReviewAttempt.MaxIntentLength" @bind="_intent" @bind:event="oninput"
-                       disabled="@(_verdict is not null)" placeholder="e.g. I studied, but I still failed" />
+                <input class="kn-input" maxlength="@GrammarReviewAttempt.MaxIntentLength" @bind="_intent[0]" @bind:event="oninput"
+                       disabled="@(_result is not null)" placeholder="e.g. I studied, but I still failed" />
             </label>
+            @if (contrast is not null)
+            {
+                <div class="kn-review-label">With <span class="kn-grammar-pattern">@contrast.Pattern</span></div>
+                <JapaneseInput @key="(_round, 1)" Placeholder="Your sentence with the similar point…"
+                               OnChanged="t => _typed[1] = t.Text" OnSubmit="CheckAsync" />
+                <label class="kn-hint kn-review-intent">
+                    What you mean (optional, in English)
+                    <input class="kn-input" maxlength="@GrammarReviewAttempt.MaxIntentLength" @bind="_intent[1]" @bind:event="oninput"
+                           disabled="@(_result is not null)" />
+                </label>
+            }
+
             <div class="kn-toolbar">
-                @if (_verdict is null)
+                @if (_result is null)
                 {
                     <button class="kn-btn kn-btn-primary" disabled="@(_grading || Reviews.Route is not { IsConfigured: true })" @onclick="CheckAsync">
                         @(_grading ? "Checking…" : "Check")
@@ -86,13 +114,18 @@ else
                 }
                 else
                 {
-                    @if (!_verdict.Verdict.TargetUsedCorrectly)
+                    bool missed = _result.Sentences.Any(s => !(Disputed(s) ?? s.Final).TargetUsedCorrectly);
+                    @if (missed)
                     {
-                        <button class="kn-btn kn-btn-primary" @onclick="RewriteAsync">Write another</button>
+                        <button class="kn-btn kn-btn-primary" disabled="@_disputeBusy" @onclick="RewriteAsync">Write another</button>
                     }
-                    <button class="kn-btn @(_verdict.Verdict.TargetUsedCorrectly ? "kn-btn-primary" : "")" @onclick="NextAsync">Next</button>
+                    <button class="kn-btn @(missed ? "" : "kn-btn-primary")" disabled="@_disputeBusy" @onclick="NextAsync">Next</button>
                 }
             </div>
+            @if (_grading && _status is not null)
+            {
+                <p class="kn-hint">@_status</p>
+            }
             @if (_problem is not null)
             {
                 <div class="kn-msg kn-msg-err">@_problem</div>
@@ -104,15 +137,47 @@ else
                     <button class="kn-btn kn-btn-sm" disabled="@_grading" @onclick="CheckAsync">Retry</button>
                 </div>
             }
-            @if (_verdict is { } r)
+
+            @if (_result is { } r)
             {
-                <GradingVerdictView Verdict="r.Verdict" Sentence="@_checked">
-                    <p class="kn-review-effect">@Effect(r)</p>
-                    @if (r.SavedNote is not null)
+                @foreach (GradedSentence g in r.Sentences)
+                {
+                    @if (r.Sentences.Count > 1)
                     {
-                        <p class="kn-hint">@r.SavedNote</p>
+                        <h3>With <span class="kn-grammar-pattern">@g.Task.Pattern</span>: <span class="kn-jp">@g.Task.Sentence</span></h3>
                     }
-                </GradingVerdictView>
+                    <GradingVerdictView Verdict="g.Verdict" Sentence="@g.Task.Sentence" />
+                    @if (g.Second is { } second)
+                    {
+                        <p class="kn-hint">The grader wasn't sure, so a second grader (@g.SecondModel) checked it independently:</p>
+                        <GradingVerdictView Verdict="second" Sentence="@g.Task.Sentence" />
+                    }
+                    @if (g.SecondProblem is not null)
+                    {
+                        <p class="kn-hint">@g.SecondProblem</p>
+                    }
+                    @if (_dispute?.Rechecked.FirstOrDefault(d => d.Sentence.AttemptId == g.AttemptId) is { } disputed)
+                    {
+                        <p class="kn-hint">Your dispute: a second grader (@disputed.Model) looked again:</p>
+                        <GradingVerdictView Verdict="disputed.Verdict" Sentence="@g.Task.Sentence" />
+                    }
+                    <WhyQuestions @key="(g.AttemptId, _dispute is null)" Graded="g.Task" Verdict="Disputed(g) ?? g.Final" />
+                }
+
+                <p class="kn-review-effect">@(ReferenceEquals(r, _deciding) && _dispute is { Overturned: true } d ? d.Note : Effect(r))</p>
+                @if (ReferenceEquals(r, _deciding) && _dispute is { Overturned: false } upheld)
+                {
+                    <p class="kn-hint">@upheld.Note</p>
+                }
+                @if (r.SavedNote is not null)
+                {
+                    <p class="kn-hint">@r.SavedNote</p>
+                }
+                @if (contrast is not null && contrast.Difference.Length > 0)
+                {
+                    <p class="kn-hint">How <span class="kn-grammar-pattern">@entry.Pattern</span> and <span class="kn-grammar-pattern">@contrast.Pattern</span> differ: @contrast.Difference</p>
+                }
+
                 @if (_item.Earlier.Count > 0)
                 {
                     <h3>Your earlier sentences with @entry.Pattern</h3>
@@ -123,6 +188,42 @@ else
                         }
                     </ul>
                 }
+            }
+
+            @* The review's miss can be disputed until Next, practice rewrites or not. *@
+            @if (_deciding is { Effect: GrammarReviewEffect.Dropped or GrammarReviewEffect.Kept } && Reviews.RecheckRoute is { IsConfigured: true } recheck)
+            {
+                <div class="kn-review-dispute">
+                    @if (_dispute is { } done)
+                    {
+                        @if (!ReferenceEquals(_result, _deciding))
+                        {
+                            <span class="kn-hint">Your dispute: @done.Note</span>
+                        }
+                    }
+                    else if (!_disputing)
+                    {
+                        <button class="kn-btn kn-btn-sm" @onclick="() => _disputing = true">Dispute this verdict</button>
+                        <span class="kn-hint">Think it's right? A second grader (@recheck.Model) takes a fresh look; if it agrees with you, this review counts as a pass.</span>
+                    }
+                    else
+                    {
+                        <label class="kn-hint">
+                            Why you think it's right (optional): what you meant, or why you wrote it this way.
+                            <textarea class="kn-textarea" rows="2" maxlength="@GrammarReviewAttempt.MaxIntentLength" @bind="_disputeComment" disabled="@_disputeBusy"></textarea>
+                        </label>
+                        <div class="kn-toolbar">
+                            <button class="kn-btn kn-btn-primary kn-btn-sm" disabled="@_disputeBusy" @onclick="DisputeAsync">
+                                @(_disputeBusy ? "Asking the second grader…" : "Ask a second grader")
+                            </button>
+                            <button class="kn-btn kn-btn-sm" disabled="@_disputeBusy" @onclick="() => _disputing = false">Cancel</button>
+                        </div>
+                    }
+                    @if (_disputeError is not null)
+                    {
+                        <div class="kn-msg kn-msg-err">@_disputeError</div>
+                    }
+                </div>
             }
         </div>
         <div class="kn-toolbar">
@@ -138,13 +239,23 @@ else
 
     private JapaneseInput? _input;
     private int _round;
-    private string _typed = "";
-    private string _intent = "";
-    private string _checked = "";
+    private readonly string[] _typed = { "", "" };
+    private readonly string[] _intent = { "", "" };
     private bool _grading;
-    private GrammarReviewResult? _verdict;
+    private string? _status;
+    private GrammarReviewResult? _result;
+
+    /// <summary>The graded answer that decided this point's review; practice rewrites don't replace it.</summary>
+    private GrammarReviewResult? _deciding;
     private string? _problem;
     private string? _gradeError;
+
+    private bool _disputing;
+    private bool _disputeBusy;
+    private string _disputeComment = "";
+    private DisputeResult? _dispute;
+    private string? _disputeError;
+
     private CancellationTokenSource _cts = new();
 
     protected override async Task OnInitializedAsync()
@@ -165,39 +276,55 @@ else
             }
             _session.LeaveForLater();
         }
-        _intent = "";
+        _deciding = null;
+        _disputing = false;
+        _disputeComment = "";
+        _dispute = null;
+        _disputeError = null;
         ResetRound();
     }
 
     private void ResetRound()
     {
         _round++;
-        _typed = "";
-        _checked = "";
-        _verdict = null;
+        _typed[0] = _typed[1] = "";
+        _intent[0] = _intent[1] = "";
+        _result = null;
         _problem = null;
         _gradeError = null;
+        _status = null;
     }
+
+    /// <summary>A sentence's verdict from a dispute, when it was disputed.</summary>
+    private GradingVerdict? Disputed(GradedSentence g) =>
+        _dispute?.Rechecked.FirstOrDefault(d => d.Sentence.AttemptId == g.AttemptId)?.Verdict;
 
     private async Task CheckAsync()
     {
-        if (_session is null || _item is null || _grading || _verdict is not null) {
+        if (_session is null || _item is null || _grading || _result is not null) {
             return;
         }
-        string sentence = GrammarContent.CleanSentence(_typed);
-        if (sentence.Length == 0) {
+        List<ReviewSentenceInput> inputs = new() { new ReviewSentenceInput(_typed[0], _intent[0]) };
+        if (_item.Contrast is not null) {
+            inputs.Add(new ReviewSentenceInput(_typed[1], _intent[1]));
+        }
+        if (inputs.All(i => GrammarContent.CleanSentence(i.Sentence).Length == 0)) {
             return;
         }
         _grading = true;
+        _status = null;
         _problem = null;
         _gradeError = null;
         StateHasChanged();
         try {
-            (GrammarReviewResult? result, string? problem) = await Reviews.GradeAsync(_session, sentence, _intent, _cts.Token);
+            (GrammarReviewResult? result, string? problem) = await Reviews.GradeAsync(_session, _item, inputs, async () => {
+                _status = "The grader wasn't sure, so a second grader is taking a look. This can take a little while…";
+                await InvokeAsync(StateHasChanged);
+            }, _cts.Token);
             _problem = problem;
-            if (result is not null) {
-                _verdict = result;
-                _checked = sentence;
+            _result = result;
+            if (result is { Effect: not GrammarReviewEffect.Practice }) {
+                _deciding = result;
             }
         } catch (LlmException ex) {
             _gradeError = ex.Message;
@@ -205,13 +332,32 @@ else
             return;
         } finally {
             _grading = false;
+            _status = null;
         }
     }
 
-    /// <summary>After a miss: a fresh sentence, as practice (the review is already decided).</summary>
+    private async Task DisputeAsync()
+    {
+        if (_session is null || _item is null || _deciding is null || _disputeBusy) {
+            return;
+        }
+        _disputeBusy = true;
+        _disputeError = null;
+        try {
+            _dispute = await Reviews.DisputeAsync(_session, _item.Point.Id, _deciding, _disputeComment, _cts.Token);
+            _disputing = false;
+        } catch (LlmException ex) {
+            _disputeError = $"The second grader couldn't be asked: {ex.Message} Nothing has changed; try again.";
+        } catch (OperationCanceledException) {
+            return;
+        } finally {
+            _disputeBusy = false;
+        }
+    }
+
+    /// <summary>After a miss: fresh sentences, as practice (the review is already decided).</summary>
     private async Task RewriteAsync()
     {
-        _intent = "";
         ResetRound();
         await Task.Yield();
         if (_input is not null) {
@@ -239,7 +385,7 @@ else
                 ? $"Counted as a miss: the point stays at {SrsSchedule.DisplayName(r.StageAfter)}, the first stage, and comes back in a few hours."
                 : $"Counted as a miss: {SrsSchedule.DisplayName(r.StageBefore)} → {SrsSchedule.DisplayName(r.StageAfter)}.")
             + " Write another sentence to practise; it won't change the stage.",
-        GrammarReviewEffect.Kept => $"The grader wasn't sure, so this miss doesn't count: the point stays at {SrsSchedule.DisplayName(r.StageAfter)} and comes back at the same stage. Write another sentence to practise.",
+        GrammarReviewEffect.Kept => $"Not sure enough to count: the point stays at {SrsSchedule.DisplayName(r.StageAfter)} and comes back at the same stage. Write another sentence to practise.",
         _ => "Practice: the review was already decided, so this doesn't change the stage.",
     };
 

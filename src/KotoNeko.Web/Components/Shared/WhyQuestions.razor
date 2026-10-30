@@ -1,0 +1,77 @@
+@* "Why?" follow-ups on one verdict: a few questions about the sentence, its grammar
+   point and the verdict, answered by the Explain job. Nothing is asked until you do. *@
+@using KotoNeko.Core.Llm
+@using KotoNeko.Web.Services.Llm
+@implements IDisposable
+@inject WhyService Why
+
+@if (Why.Route is { IsConfigured: true })
+{
+    <div class="kn-why">
+        @foreach (WhyExchange e in _exchanges)
+        {
+            <div class="kn-why-q">Q: @e.Question</div>
+            <div class="kn-why-a">@e.Answer</div>
+        }
+        @if (_exchanges.Count < Explaining.MaxQuestions)
+        {
+            <div class="kn-toolbar">
+                <input class="kn-input" maxlength="@Explaining.MaxQuestionLength" placeholder="Why? Ask about this verdict…"
+                       @bind="_question" @bind:event="oninput" @onkeydown="KeyAsync" disabled="@_asking" />
+                <button class="kn-btn kn-btn-sm" disabled="@(_asking || string.IsNullOrWhiteSpace(_question))" @onclick="AskAsync">
+                    @(_asking ? "Thinking…" : "Ask")
+                </button>
+            </div>
+            <div class="kn-hint">Up to @Explaining.MaxQuestions questions on this sentence and its grammar point. Answers don't change the verdict.</div>
+        }
+        @if (_error is not null)
+        {
+            <div class="kn-msg kn-msg-err">@_error</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public GradingTask Graded { get; set; } = null!;
+    [Parameter, EditorRequired] public GradingVerdict Verdict { get; set; } = null!;
+
+    private readonly List<WhyExchange> _exchanges = new();
+    private string _question = "";
+    private bool _asking;
+    private string? _error;
+    private readonly CancellationTokenSource _cts = new();
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") {
+            await AskAsync();
+        }
+    }
+
+    private async Task AskAsync()
+    {
+        string question = _question.Trim();
+        if (_asking || question.Length == 0 || _exchanges.Count >= Explaining.MaxQuestions) {
+            return;
+        }
+        _asking = true;
+        _error = null;
+        try {
+            string answer = await Why.AskAsync(Graded, Verdict, _exchanges, question, _cts.Token);
+            _exchanges.Add(new WhyExchange(question, answer));
+            _question = "";
+        } catch (LlmException ex) {
+            _error = $"Couldn't get an answer: {ex.Message}";
+        } catch (OperationCanceledException) {
+            return;
+        } finally {
+            _asking = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

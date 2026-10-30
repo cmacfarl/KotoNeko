@@ -16,6 +16,9 @@ public enum LlmJob
 
     /// <summary>Pre-labelling the grading test set (several models vote; people settle disagreements).</summary>
     Label = 3,
+
+    /// <summary>A second opinion on a grade: an unsure miss, or a disputed verdict (Phase 5).</summary>
+    Recheck = 4,
 }
 
 /// <summary>
@@ -44,6 +47,15 @@ public enum LlmFeature
 
     /// <summary>Grading a sentence written in a grammar review.</summary>
     ReviewGrading = 6,
+
+    /// <summary>A second opinion on a review the grader wasn't sure was a miss.</summary>
+    SecondOpinion = 7,
+
+    /// <summary>A second opinion on a review verdict the learner disputed.</summary>
+    Dispute = 8,
+
+    /// <summary>Answering a "Why?" question about a verdict.</summary>
+    WhyQuestion = 9,
 }
 
 /// <summary>How an LLM call ended, for the call log.</summary>

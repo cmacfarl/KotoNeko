@@ -267,6 +267,12 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.Confidence).HasMaxLength(10).IsRequired();
             entity.Property(e => e.VerdictJson).HasColumnType("text").IsRequired();
             entity.Property(e => e.PromptVersion).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ContrastPattern).HasMaxLength(GrammarReviewAttempt.MaxContrastLength);
+            entity.Property(e => e.SecondVerdictJson).HasColumnType("text");
+            entity.Property(e => e.SecondModel).HasMaxLength(GrammarReviewAttempt.MaxModelLength);
+            entity.Property(e => e.DisputeComment).HasMaxLength(GrammarReviewAttempt.MaxIntentLength).IsRequired();
+            entity.Property(e => e.DisputeVerdictJson).HasColumnType("text");
+            entity.Property(e => e.DisputeModel).HasMaxLength(GrammarReviewAttempt.MaxModelLength);
             entity.HasOne(e => e.GrammarPoint)
                 .WithMany()
                 .HasForeignKey(e => e.GrammarPointId)

@@ -60,6 +60,29 @@ public static class SrsEngine
         ScheduleNext(item, now);
     }
 
+    /// <summary>
+    /// Replace a review's miss with a pass, as if the pass had been the result: back to
+    /// <paramref name="stageBefore"/>, then up a stage, scheduled from the review's
+    /// time. <paramref name="missCounted"/> says whether the miss was counted (and so
+    /// is taken back). Returns false, changing nothing, when the item has moved on
+    /// since (it isn't at <paramref name="stageAfterMiss"/>).
+    /// </summary>
+    public static bool OverturnMiss(SrsItem item, SrsStage stageBefore, SrsStage stageAfterMiss, bool missCounted, DateTime reviewedAt)
+    {
+        if (item.Stage != stageAfterMiss || stageBefore is SrsStage.Locked or SrsStage.Burned)
+        {
+            return false;
+        }
+        item.Stage = stageBefore;
+        if (missCounted && item.IncorrectCount > 0)
+        {
+            item.IncorrectCount--;
+        }
+        Advance(item, reviewedAt);
+        item.CorrectCount++;
+        return true;
+    }
+
     /// <summary>Move the item up one stage, scheduling the next review.</summary>
     private static void Advance(SrsItem item, DateTime now)
     {
