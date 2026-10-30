@@ -4,8 +4,12 @@ using KotoNeko.Core.Domain;
 
 namespace KotoNeko.Core.Llm;
 
-/// <summary>What the learner was asked to do, and what they wrote.</summary>
-public sealed record GradingTask(string Pattern, string Meaning, string Task, string Sentence);
+/// <summary>
+/// What the learner was asked to do, and what they wrote. An empty <see cref="Task"/> is a
+/// free sentence of their own (a grammar review); <see cref="Intent"/> is what they say
+/// they mean by it, in English, when they say.
+/// </summary>
+public sealed record GradingTask(string Pattern, string Meaning, string Task, string Sentence, string Intent = "");
 
 /// <summary>Another mistake in the sentence: feedback only, never an SRS signal.</summary>
 public sealed record GradingError(
@@ -37,7 +41,8 @@ public static class Grading
 {
     // grade-v2: a natural reading of the situation counts; a required different form is
     // wrong, never just unnatural; the explanation is written before the verdict.
-    public const string PromptVersion = "grade-v2";
+    // grade-v3: free sentences (no situation) and the learner's stated meaning.
+    public const string PromptVersion = "grade-v3";
 
     public static readonly IReadOnlyList<string> ErrorCategories = new[] {
         "target_pattern", "conjugation", "particle", "vocabulary", "kanji", "word_order", "politeness", "other",
@@ -47,8 +52,9 @@ public static class Grading
 
     private const string System = """
         You grade a Japanese learner's sentence for one grammar point. The learner was given a situation and wrote
-        a sentence for it using that grammar point. Your verdict decides whether the learner's review of the
-        grammar point counts as passed, so judge the target grammar point carefully and fairly:
+        a sentence for it using that grammar point, or wrote a free sentence of their own with it. Your verdict
+        decides whether the learner's review of the grammar point counts as passed, so judge the target grammar
+        point carefully and fairly:
 
         - explanation comes first: a short English explanation for the learner of why the target use is right or
           wrong. Decide target_used_correctly and natural from it; they must agree with what it says.
@@ -60,6 +66,14 @@ public static class Grading
           explanation what the sentence implies and what to use if the learner meant otherwise. Where the
           situation does pin the meaning down (a neutral comparison, say, or the speaker's own choice), judge
           against that meaning.
+        - A free sentence (no situation) is the learner's own choice of what to say. Judge it as it stands: if a
+          natural context exists in which it is correct, the target is used correctly; say in the explanation
+          what context or meaning the sentence implies.
+        - When the learner says what they mean, judge the target grammar point against that meaning: if the
+          target, as used, doesn't express it, or can't (another grammar point is needed for it),
+          target_used_correctly is false, and the explanation says what the sentence means instead and how to
+          say what they meant. Other differences from what they meant, such as a wrong word, don't make it
+          false: list them in errors.
         - Mistakes that don't involve the target grammar point (a wrong particle elsewhere, a vocabulary or kanji
           slip) don't make target_used_correctly false. List them in errors as feedback.
         - natural is false when the sentence is grammatical and uses the target correctly, but a native speaker
@@ -111,6 +125,7 @@ public static class Grading
         $"""
         Grammar point: {task.Pattern} ({task.Meaning})
         Situation given to the learner: {(task.Task.Length > 0 ? task.Task : "(none: free sentence)")}
+        What the learner says they mean: {(task.Intent.Length > 0 ? task.Intent : "(not given)")}
         Learner's sentence: {task.Sentence}
         """,
         "grading_verdict", Schema(), MaxTokens: 4000);

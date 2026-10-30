@@ -1,0 +1,34 @@
+@* A grader's verdict on a sentence: pass or miss, the explanation, a natural rewrite
+   and other errors, with room below for what the verdict did (ChildContent). *@
+@using KotoNeko.Core.Llm
+
+<div class="kn-lesson-verdict @(Verdict.TargetUsedCorrectly ? "kn-lesson-verdict-pass" : "kn-lesson-verdict-miss")">
+    <div class="kn-lesson-verdict-head">
+        @(Verdict.TargetUsedCorrectly ? (Verdict.Natural ? "✓ Correct" : "✓ Correct, but a native speaker would say it differently") : "✗ Not quite")
+        <span class="kn-hint">(@Verdict.Confidence confidence)</span>
+    </div>
+    <p>@Verdict.Explanation</p>
+    @if (!string.IsNullOrWhiteSpace(Verdict.NaturalRewrite) && (!Verdict.TargetUsedCorrectly || !Verdict.Natural || Verdict.NaturalRewrite != Sentence))
+    {
+        <p>Natural: <span class="kn-jp">@Verdict.NaturalRewrite</span></p>
+    }
+    @if (Verdict.Errors is { Count: > 0 } errors)
+    {
+        <ul>
+            @foreach (GradingError e in errors)
+            {
+                <li><span class="kn-jp">@e.Span → @e.Correction</span> <span class="kn-hint">(@e.Category)</span> @e.Explanation</li>
+            }
+        </ul>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired] public GradingVerdict Verdict { get; set; } = null!;
+
+    /// <summary>The sentence that was graded (a rewrite identical to it isn't shown).</summary>
+    [Parameter] public string Sentence { get; set; } = "";
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -41,6 +41,9 @@ public enum LlmFeature
 
     /// <summary>Pre-labelling the grading test set.</summary>
     Prelabelling = 5,
+
+    /// <summary>Grading a sentence written in a grammar review.</summary>
+    ReviewGrading = 6,
 }
 
 /// <summary>How an LLM call ended, for the call log.</summary>

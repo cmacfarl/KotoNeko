@@ -40,7 +40,7 @@ public class GrammarPointTests
         Assert.Equal(3, problems.Count);
         Assert.Contains(problems, p => p.Contains("explanation"));
         Assert.Contains(problems, p => p.Contains("approved example"));
-        Assert.Contains(problems, p => p.Contains("situation"));
+        Assert.Contains(problems, p => p.Contains("idea"));
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class GrammarPointTests
         Assert.Contains("- 〜から: because", request.Prompt);
         Assert.Contains("- 勉強したのに、落ちた。", request.Prompt);
         Assert.Contains("don't reproduce", request.System);
-        Assert.Contains("pins down everything", request.System);
+        Assert.Contains("these aren't sentences to translate", request.System);
     }
 
     [Fact]

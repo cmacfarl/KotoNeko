@@ -26,16 +26,17 @@ public sealed record GrammarDraft(
 /// <summary>
 /// The request for a grammar point's lesson content: explanation, how it attaches,
 /// register, contrasts with similar points, common mistakes, example sentences and
-/// guided-round situations. Everything comes back as a draft the user edits and
+/// ideas for the learner's own sentences. Everything comes back as a draft the user edits and
 /// approves; examples are checked offline against the known-words pool.
 /// </summary>
 public static class GrammarDrafting
 {
     // v2: formation is a list of rules, not one line.
-    public const string PromptVersion = "grammar-content-v2";
+    // v3: short idea topics for free composition, not situations to translate.
+    public const string PromptVersion = "grammar-content-v3";
 
     public const int ExampleCount = 5;
-    public const int SituationCount = 4;
+    public const int IdeaCount = 6;
 
     /// <summary>Known words sent per request, as for practice sentences.</summary>
     public const int KnownWordSample = 400;
@@ -62,12 +63,13 @@ public static class GrammarDrafting
           situation, with a natural English translation. Keep them short (about 25 kana or fewer read aloud), and
           use words from the learner's known-word list where you can, plus particles and basic function words.
           Write Japanese as it's normally written, with kanji where usual; no furigana, romaji or spaces.
-        - situations: tasks for the learner to write their own sentence with the point. Each describes, in
-          English, a situation and what to say, and pins down everything the point depends on: who the speaker
-          is, their circumstances, and how they feel about it (for 〜のに, say whether the outcome is unwelcome
-          or surprising; for a purpose clause, say what's under the speaker's control). A grader will judge the
-          learner's sentence against the situation exactly as written. hint gives the shape of the answer
-          (e.g. "Verb (past) + のに, then what happened") without giving the sentence away.
+        - situations: ideas to help the learner start a sentence of their own with the point, for when they
+          face a blank page. The learner composes freely; these aren't sentences to translate. In "situation",
+          give a short topic in English, a few words to one short sentence, that suits the point and leaves the
+          details and wording to the learner (for 〜のに: "something you worked hard at that didn't pay off";
+          for a purpose clause: "a habit you keep so that something goes well"). Vary them across everyday
+          life, and keep them within what a learner at this JLPT level can say. hint gives the shape of a
+          sentence (e.g. "Verb (past) + のに, then what happened") without giving one away.
         """;
 
     /// <summary>The JSON schema the answer must follow; every object is closed.</summary>
@@ -93,7 +95,7 @@ public static class GrammarDrafting
     {
         StringBuilder prompt = new();
         prompt.AppendLine($"Grammar point: {target.Pattern} ({target.Meaning}), JLPT {target.Level}");
-        prompt.AppendLine($"Examples wanted: {ExampleCount}. Situations wanted: {SituationCount}.");
+        prompt.AppendLine($"Examples wanted: {ExampleCount}. Ideas (situations) wanted: {IdeaCount}.");
         prompt.AppendLine();
 
         List<string> words = knownWords.Distinct().ToList();
@@ -122,7 +124,7 @@ public static class GrammarDrafting
         : draft.Formation is null || draft.Formation.All(string.IsNullOrWhiteSpace) ? "no formation"
         : !Formalities.Contains(draft.Formality) ? $"unknown formality '{draft.Formality}'"
         : draft.Examples is not { Count: > 0 } || draft.Examples.All(x => string.IsNullOrWhiteSpace(x.Japanese)) ? "no examples"
-        : draft.Situations is not { Count: > 0 } ? "no situations"
+        : draft.Situations is not { Count: > 0 } ? "no ideas"
         : null;
 
     public static GrammarFormality Formality(string value) => value switch {

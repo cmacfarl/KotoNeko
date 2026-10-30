@@ -2,6 +2,7 @@ using KotoNeko.Core.Domain;
 using KotoNeko.Core.Srs;
 using KotoNeko.Core.Text;
 using KotoNeko.Data;
+using KotoNeko.Data.Vocab;
 using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services;
@@ -14,6 +15,9 @@ public sealed record GrammarExampleView(GrammarExample Example, SentenceView? Vi
 {
     public string AudioUrl => $"/api/grammar-example/{Example.Id}/audio";
 }
+
+/// <summary>A known word offered as an idea for a sentence of your own, with its first meaning.</summary>
+public sealed record IdeaWord(string Japanese, string Meaning);
 
 /// <summary>How many new grammar lessons today's cap still allows.</summary>
 public sealed record GrammarAllowance(int Cap, int DoneToday)
@@ -177,6 +181,19 @@ public sealed class GrammarPointService
                 : PracticeSentenceService.Check(view, string.Empty, isKnown).Unknown;
             return new GrammarExampleView(x, view, unknown);
         }).ToList();
+    }
+
+    /// <summary>A few words from the known-words pool, at random, to suggest for a sentence of your own.</summary>
+    public async Task<List<IdeaWord>> IdeaWordsAsync(int count = 3)
+    {
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        SrsStage threshold = (await SettingsService.LoadAsync(db)).KnownWordStage;
+        List<int> ids = await db.Vocabulary.AsNoTracking().InPool(threshold).Select(v => v.Id).ToListAsync();
+        List<int> picked = ids.OrderBy(_ => Random.Shared.Next()).Take(count).ToList();
+        var words = await db.Vocabulary.AsNoTracking().Where(v => picked.Contains(v.Id))
+            .Select(v => new { v.Japanese, Meaning = v.Meanings.OrderBy(m => m.SortOrder).Select(m => m.Text).FirstOrDefault() })
+            .ToListAsync();
+        return words.Select(w => new IdeaWord(w.Japanese, w.Meaning ?? "")).OrderBy(_ => Random.Shared.Next()).ToList();
     }
 
     /// <summary>Furigana for a lesson: only over words the user doesn't know yet.</summary>

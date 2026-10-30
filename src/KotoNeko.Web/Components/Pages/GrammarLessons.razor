@@ -2,6 +2,7 @@
 @implements IDisposable
 @using KotoNeko.Core.Llm
 @using KotoNeko.Llm
+@using KotoNeko.Core.Review
 @inject GrammarPointService Points
 @inject GradingService Grading
 @inject IJSRuntime JS
@@ -17,7 +18,7 @@ else if (_finished is { } done)
     <div class="kn-session-done">
         <div class="big">🎉</div>
         <h1>@done learned</h1>
-        <p>It's in your SRS now. Grammar reviews (writing your own sentences) arrive with the composition tutor.</p>
+        <p>It's in your SRS now: its first grammar review, writing a sentence of your own with it, comes up in a few hours.</p>
         @if (_allowance is { LeftToday: > 0 } && _nextAvailable)
         {
             <button class="kn-btn kn-btn-primary" @onclick="NextAsync">Next grammar lesson</button>
@@ -140,28 +141,29 @@ else
         else
         {
             <div class="kn-panel">
-                @if (_round < _point.Situations.Count)
+                @if (_round < GrammarReview.LessonSentences)
                 {
-                    GrammarSituation situation = _point.Situations[_round];
-                    <p class="kn-hint">Your turn, @(_round + 1) of @_point.Situations.Count. Practice only: nothing here changes the SRS.</p>
-                    <p class="kn-lesson-situation">@situation.Situation</p>
-                    @if (situation.Hint.Length > 0)
-                    {
-                        <p class="kn-hint">Hint: <span class="kn-grammar-pattern">@situation.Hint</span></p>
-                    }
+                    <p class="kn-hint">Your turn, @(_round + 1) of @GrammarReview.LessonSentences. Practice only: nothing here changes the SRS.</p>
+                    <p class="kn-lesson-situation">Write a sentence of your own with <span class="kn-grammar-pattern">@entry.Pattern</span>: anything you like.</p>
+                    <CompositionIdeas Ideas="_point.Situations" ShowHints="true" />
                     @if (Grading.Route is not { IsConfigured: true })
                     {
                         <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so your sentences can't be checked. You can still finish the lesson.</div>
                     }
                     <JapaneseInput @ref="_input" @key="_round" AutoFocus="true" Placeholder="Your sentence…"
                                    OnChanged="t => _typed = t.Text" OnSubmit="CheckAsync" />
+                    <label class="kn-hint kn-review-intent">
+                        What you mean (optional, in English): helps the grader judge your sentence as you meant it.
+                        <input class="kn-input" maxlength="@GrammarReviewAttempt.MaxIntentLength" @bind="_intent" @bind:event="oninput"
+                               disabled="@(_verdict is not null)" placeholder="e.g. I studied, but I still failed" />
+                    </label>
                     <div class="kn-toolbar">
                         @if (_verdict is null)
                         {
                             <button class="kn-btn kn-btn-primary" disabled="@(_grading || Grading.Route is not { IsConfigured: true })" @onclick="CheckAsync">
                                 @(_grading ? "Checking…" : "Check")
                             </button>
-                            <button class="kn-btn" disabled="@_grading" @onclick="SkipSituation" title="Move on without having this one checked">Skip this one</button>
+                            <button class="kn-btn" disabled="@_grading" @onclick="SkipSituation" title="Move on without writing this one">Skip this one</button>
                         }
                         else
                         {
@@ -172,6 +174,10 @@ else
                             <button class="kn-btn @(_verdict.TargetUsedCorrectly ? "kn-btn-primary" : "")" @onclick="NextSituation">Next</button>
                         }
                     </div>
+                    @if (_problem is not null)
+                    {
+                        <div class="kn-msg kn-msg-err">@_problem</div>
+                    }
                     @if (_gradeError is not null)
                     {
                         <div class="kn-msg kn-msg-err">
@@ -181,35 +187,17 @@ else
                     }
                     @if (_verdict is { } v)
                     {
-                        <div class="kn-lesson-verdict @(v.TargetUsedCorrectly ? "kn-lesson-verdict-pass" : "kn-lesson-verdict-miss")">
-                            <div class="kn-lesson-verdict-head">
-                                @(v.TargetUsedCorrectly ? (v.Natural ? "✓ Correct" : "✓ Correct, but a native speaker would say it differently") : "✗ Not quite")
-                                <span class="kn-hint">(@v.Confidence confidence)</span>
-                            </div>
-                            <p>@v.Explanation</p>
-                            @if (!string.IsNullOrWhiteSpace(v.NaturalRewrite) && (!v.TargetUsedCorrectly || !v.Natural || v.NaturalRewrite != _checked))
-                            {
-                                <p>Natural: <span class="kn-jp">@v.NaturalRewrite</span></p>
-                            }
-                            @if (v.Errors is { Count: > 0 } errors)
-                            {
-                                <ul>
-                                    @foreach (GradingError e in errors)
-                                    {
-                                        <li><span class="kn-jp">@e.Span → @e.Correction</span> <span class="kn-hint">(@e.Category)</span> @e.Explanation</li>
-                                    }
-                                </ul>
-                            }
+                        <GradingVerdictView Verdict="v" Sentence="@_checked">
                             @if (v.TargetUsedCorrectly && _savedNote is not null)
                             {
                                 <p class="kn-hint">@_savedNote</p>
                             }
-                        </div>
+                        </GradingVerdictView>
                     }
                 }
                 else
                 {
-                    <p>That's the guided round: @_passed of @_point.Situations.Count passed@(_skipped > 0 ? $", {_skipped} skipped" : "").</p>
+                    <p>That's the round: @_passed of @GrammarReview.LessonSentences passed@(_skipped > 0 ? $", {_skipped} skipped" : "").</p>
                 }
             </div>
         }
@@ -223,7 +211,7 @@ else
             {
                 <button class="kn-btn kn-btn-primary" @onclick="() => _step++">Next: @Steps[_step + 1]</button>
             }
-            else if (_round >= _point.Situations.Count)
+            else if (_round >= GrammarReview.LessonSentences)
             {
                 <button class="kn-btn kn-btn-primary" disabled="@_busy" @onclick="FinishAsync">Finish lesson</button>
             }
@@ -251,7 +239,10 @@ else
     private JapaneseInput? _input;
     private int _round;
     private string _typed = "";
+    private string _intent = "";
     private string _checked = "";
+    private readonly List<string> _written = new();
+    private string? _problem;
     private bool _grading;
     private GradingVerdict? _verdict;
     private string? _gradeError;
@@ -279,6 +270,8 @@ else
         _round = 0;
         _passed = 0;
         _skipped = 0;
+        _written.Clear();
+        _intent = "";
         ResetRound();
         _allowance = await Points.GetAllowanceAsync(DateTime.UtcNow);
         if (_allowance.LeftToday > 0 && await Points.NextLessonAsync() is int id && await Points.GetAsync(id) is { } point) {
@@ -297,34 +290,46 @@ else
         _checked = "";
         _verdict = null;
         _gradeError = null;
+        _problem = null;
         _savedNote = null;
     }
 
     private async Task CheckAsync()
     {
-        if (_point is null || _grading || _verdict is not null || _round >= _point.Situations.Count) {
+        if (_point is null || _grading || _verdict is not null || _round >= GrammarReview.LessonSentences) {
             return;
         }
         string sentence = GrammarContent.CleanSentence(_typed);
         if (sentence.Length == 0) {
             return;
         }
+        // Your own sentence: not one of the point's examples, nor one you've already written.
+        if (GrammarReview.IsRepeat(sentence, _point.Examples.Select(x => x.Text).Concat(_written))) {
+            _problem = "That sentence is already one of this point's examples or yours. Try a new one.";
+            return;
+        }
         GrammarListEntry entry = _point.Entry!;
+        string intent = _intent.Trim();
         _grading = true;
+        _problem = null;
         _gradeError = null;
         StateHasChanged();
         try {
-            GradingTask task = new(entry.Pattern, entry.Meaning, _point.Situations[_round].Situation, sentence);
+            GradingTask task = new(entry.Pattern, entry.Meaning, "", sentence, intent);
             LlmResult<GradingVerdict> result = await Grading.GradeAsync(task, LlmFeature.LessonGrading, cancellationToken: _cts.Token);
             _verdict = result.Value;
             _checked = sentence;
+            _written.Add(sentence);
             if (_verdict.TargetUsedCorrectly) {
                 _passed++;
-                // A sentence of your own that passed goes in the point's sentence bank, as a
-                // draft: the grader can pass a wrong sentence, so it waits for your OK.
-                (bool added, _) = await Points.AddExampleAsync(_point.Id, sentence, "", GrammarExampleSource.Composition,
-                    GrammarContentStatus.Draft, voice: false);
-                _savedNote = added ? "Saved to this point's examples as a draft composition; approve it on the lesson's edit page." : null;
+                // Into the point's sentence bank, as in reviews: approved when the grader found
+                // nothing else to fix, otherwise a draft to look over (the grader can miss things).
+                bool clean = _verdict.Natural && _verdict.Errors is not { Count: > 0 };
+                (bool added, _) = await Points.AddExampleAsync(_point.Id, sentence, intent, GrammarExampleSource.Composition,
+                    clean ? GrammarContentStatus.Approved : GrammarContentStatus.Draft, voice: false);
+                _savedNote = !added ? null
+                    : clean ? "Saved to your sentences for this point."
+                    : "Saved to this point's sentences as a draft, since the grader suggested changes: approve or edit it on the lesson's edit page.";
             }
         } catch (LlmException ex) {
             _gradeError = ex.Message;
@@ -347,6 +352,7 @@ else
     private void NextSituation()
     {
         _round++;
+        _intent = "";
         ResetRound();
     }
 
@@ -354,6 +360,7 @@ else
     {
         _skipped++;
         _round++;
+        _intent = "";
         ResetRound();
     }
 

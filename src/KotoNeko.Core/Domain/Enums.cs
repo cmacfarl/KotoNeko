@@ -84,6 +84,8 @@ public enum QuestionType
     Production = 3,
     /// <summary>Audio → English: hear the word with no text shown, type its meaning.</summary>
     Listening = 4,
+    /// <summary>A grammar review: write your own sentence with the point (Phase 5).</summary>
+    Composition = 5,
 }
 
 /// <summary>

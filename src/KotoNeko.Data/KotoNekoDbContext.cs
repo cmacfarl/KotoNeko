@@ -32,6 +32,7 @@ public class KotoNekoDbContext : DbContext
     public DbSet<GrammarListEntry> GrammarList => Set<GrammarListEntry>();
     public DbSet<GrammarPoint> GrammarPoints => Set<GrammarPoint>();
     public DbSet<GrammarExample> GrammarExamples => Set<GrammarExample>();
+    public DbSet<GrammarReviewAttempt> GrammarReviewAttempts => Set<GrammarReviewAttempt>();
     public DbSet<GrammarExampleAudio> GrammarExampleAudios => Set<GrammarExampleAudio>();
     public DbSet<LlmCall> LlmCalls => Set<LlmCall>();
     public DbSet<GradingTestItem> GradingTestItems => Set<GradingTestItem>();
@@ -256,6 +257,21 @@ public class KotoNekoDbContext : DbContext
                 .WithOne(x => x.GrammarPoint)
                 .HasForeignKey(x => x.GrammarPointId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GrammarReviewAttempt>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Sentence).HasMaxLength(GrammarReviewAttempt.MaxSentenceLength).IsRequired();
+            entity.Property(e => e.Intent).HasMaxLength(GrammarReviewAttempt.MaxIntentLength).IsRequired();
+            entity.Property(e => e.Confidence).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.VerdictJson).HasColumnType("text").IsRequired();
+            entity.Property(e => e.PromptVersion).HasMaxLength(100).IsRequired();
+            entity.HasOne(e => e.GrammarPoint)
+                .WithMany()
+                .HasForeignKey(e => e.GrammarPointId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.GrammarPointId, e.AttemptedAt });
         });
 
         modelBuilder.Entity<GrammarExample>(entity =>

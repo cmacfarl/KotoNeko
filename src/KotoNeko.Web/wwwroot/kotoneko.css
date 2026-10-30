@@ -151,7 +151,7 @@ h1, h2, h3 {
 /* ===== Dashboard ===== */
 .kn-cta-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
     margin-bottom: 1.25rem;
 }
@@ -192,6 +192,10 @@ h1, h2, h3 {
 
 .kn-cta-reviews {
     background: linear-gradient(to bottom, #5fa3e3, var(--kn-master));
+}
+
+.kn-cta-grammar-reviews {
+    background: linear-gradient(to bottom, #4fc1e9, var(--kn-enlightened));
 }
 
 .kn-cta-disabled {
@@ -321,6 +325,7 @@ h1, h2, h3 {
 .kn-ime-candidates li.active .kn-ime-num { color: rgba(255, 255, 255, 0.8); }
 
 .kn-ime-hint { color: var(--kn-muted); font-size: 0.85rem; }
+.kn-ime-seg, .kn-ime-candidates li { cursor: pointer; }
 
 .kn-ime-warning {
     color: var(--kn-incorrect-dark);
@@ -1204,3 +1209,15 @@ kbd {
 .kn-accounting-group { border-top: 1px solid var(--kn-border); }
 .kn-accounting-group-name { font-weight: 600; vertical-align: top; }
 .kn-accounting-subtotal td { font-weight: 600; }
+
+/* Grammar reviews: the optional "what you mean", what the verdict did, earlier sentences. */
+.kn-review-intent { display: block; margin: 0.6rem 0; }
+.kn-review-intent .kn-input { margin-top: 0.3rem; }
+.kn-review-effect { font-weight: 600; }
+.kn-review-earlier { margin: 0.3rem 0 0; padding-left: 1.2rem; }
+
+/* Ideas for a sentence of your own: a topic, its shape, a few known words. */
+.kn-ideas { margin: 0.4rem 0 0.8rem; }
+.kn-ideas-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.3rem 0; }
+.kn-ideas .kn-jp { font-size: inherit; }
+.kn-ideas-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--kn-muted); min-width: 7.5rem; }

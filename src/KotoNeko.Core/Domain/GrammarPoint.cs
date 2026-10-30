@@ -53,9 +53,10 @@ public sealed record GrammarMistake(
     [property: JsonPropertyName("why")] string Why);
 
 /// <summary>
-/// A guided-round task: a situation the learner writes a sentence for, with a hint
-/// at the structure. The grader judges against the situation as written, so it
-/// should pin down the speaker's circumstances and feelings.
+/// An idea to get a sentence of your own started: a short topic to write about, and
+/// a hint at the structure. Lessons and reviews offer these on request; the sentence
+/// is still free composition, graded as written. (Points drafted before
+/// grammar-content-v3 have full situations here, which work as ideas too.)
 /// </summary>
 public sealed record GrammarSituation(
     [property: JsonPropertyName("situation")] string Situation,
@@ -204,7 +205,7 @@ public static class GrammarContent
             problems.Add("It needs at least one approved example.");
         }
         if (point.Situations.Count == 0) {
-            problems.Add("It needs at least one situation for the guided round.");
+            problems.Add("It needs at least one idea to offer when you write your own sentences.");
         }
         return problems;
     }

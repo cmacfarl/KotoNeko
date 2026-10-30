@@ -55,6 +55,7 @@ builder.Services.AddScoped<KnownWordsService>();
 builder.Services.AddScoped<PracticeSentenceService>();
 builder.Services.AddScoped<GrammarService>();
 builder.Services.AddScoped<GrammarPointService>();
+builder.Services.AddScoped<GrammarReviewService>();
 builder.Services.AddScoped<AccountingService>();
 builder.Services.AddScoped<GradingTestService>();
 

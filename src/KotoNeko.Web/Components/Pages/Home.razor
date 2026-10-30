@@ -44,6 +44,10 @@ else
             <div class="kn-cta-count">@_summary.DueNow</div>
             <div class="kn-cta-label">Reviews</div>
         </a>
+        <a class="kn-cta kn-cta-grammar-reviews @(_summary.GrammarReviewsDue == 0 ? "kn-cta-disabled" : "")" href="/grammar-reviews">
+            <div class="kn-cta-count">@_summary.GrammarReviewsDue</div>
+            <div class="kn-cta-label">Grammar reviews</div>
+        </a>
     </div>
 
     <div class="kn-panel">

@@ -45,7 +45,7 @@ else
         {
             <p class="kn-hint">
                 Asks @route.Provider · @route.Model (the Generate job) for the explanation, how it attaches, the register, contrasts,
-                common mistakes, @GrammarDrafting.ExampleCount examples and @GrammarDrafting.SituationCount guided-round situations.
+                common mistakes, @GrammarDrafting.ExampleCount examples and @GrammarDrafting.IdeaCount ideas for your own sentences.
                 It replaces the content below; examples are added as drafts for you to approve. Nothing is taught until you approve the point.
             </p>
             <button class="kn-btn kn-btn-primary" @onclick="DraftAsync" disabled="@_busy">@(_drafting ? "Drafting…" : "✎ Draft lesson content")</button>
@@ -102,22 +102,23 @@ else
         }
         <button class="kn-btn kn-btn-sm" @onclick="() => _mistakes.Add(new MistakeRow())">+ Mistake</button>
 
-        <h3>Guided-round situations</h3>
+        <h3>Ideas for your own sentences</h3>
         <p class="kn-hint">
-            The lesson ends with a round of these: you write a sentence for each and the grader checks it against the situation exactly as written,
-            so say who the speaker is, their circumstances and how they feel about it. The hint gives the shape of the answer.
+            In lessons and reviews you write sentences of your own with the point. When you ask for an idea, you get one of these:
+            a short topic to write about, leaving the details to you. The hint gives the shape of a sentence and is shown in
+            lessons and at Apprentice.
         </p>
         @foreach (SituationRow row in _situations)
         {
             <div class="kn-grammar-row">
-                <textarea class="kn-textarea" rows="2" placeholder="Situation and what to say" @bind="row.Situation"></textarea>
+                <textarea class="kn-textarea" rows="2" placeholder="A topic, e.g. something you worked hard at that didn't pay off" @bind="row.Situation"></textarea>
                 <div class="kn-toolbar">
                     <input class="kn-input" placeholder="Hint: Verb (past) + のに, then what happened" @bind="row.Hint" />
                     <button class="kn-btn kn-btn-sm" @onclick="() => _situations.Remove(row)">Remove</button>
                 </div>
             </div>
         }
-        <button class="kn-btn kn-btn-sm" @onclick="() => _situations.Add(new SituationRow())">+ Situation</button>
+        <button class="kn-btn kn-btn-sm" @onclick="() => _situations.Add(new SituationRow())">+ Idea</button>
 
         <div class="kn-toolbar" style="margin-top:1rem">
             <button class="kn-btn kn-btn-primary" @onclick="SaveAsync" disabled="@_busy">Save content</button>

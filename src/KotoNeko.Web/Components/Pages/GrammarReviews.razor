@@ -1,0 +1,251 @@
+@page "/grammar-reviews"
+@implements IDisposable
+@using KotoNeko.Core.Llm
+@using KotoNeko.Core.Review
+@using KotoNeko.Core.Srs
+@inject GrammarReviewService Reviews
+
+<PageTitle>Grammar reviews · KotoNeko</PageTitle>
+
+@if (_session is null)
+{
+    <p class="kn-empty">Loading…</p>
+}
+else if (_session.Total == 0)
+{
+    <div class="kn-session-done">
+        <div class="big">☕</div>
+        <h1>No grammar reviews due</h1>
+        <p>A grammar point comes up for review a few hours after its lesson, then at longer and longer gaps.</p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+    </div>
+}
+else if (_item is null)
+{
+    <div class="kn-session-done">
+        <div class="big">🎉</div>
+        <h1>Grammar reviews done</h1>
+        <p>
+            @_session.Passed of @_session.Reviewed passed@(_session.LeftForLater > 0 ? $"; {_session.LeftForLater} left for later (still due)" : "").
+        </p>
+        <a class="kn-btn kn-btn-primary" href="/">Back to dashboard</a>
+    </div>
+}
+else
+{
+    GrammarPoint point = _item.Point;
+    GrammarListEntry entry = point.Entry!;
+    <div class="kn-lesson">
+        <p class="kn-hint">Grammar review @(_session.Total - _session.Remaining + 1) of @_session.Total · @SrsSchedule.DisplayName(_stage)</p>
+        <div class="kn-lesson-head">
+            <span class="kn-lesson-pattern">@entry.Pattern</span>
+            @if (_item.Cues.Meaning)
+            {
+                <span class="kn-lesson-meaning">@entry.Meaning</span>
+            }
+            <span class="kn-pill kn-pill-jlpt">@entry.Level</span>
+        </div>
+        @if (_item.Cues.Formation)
+        {
+            <ul class="kn-lesson-formation">
+                @foreach (string rule in GrammarContent.FormationRules(point.Formation))
+                {
+                    <li class="kn-grammar-pattern">@rule</li>
+                }
+            </ul>
+        }
+
+        <div class="kn-panel">
+            <p>Write a sentence of your own with <span class="kn-grammar-pattern">@entry.Pattern</span>. Anything you like.</p>
+            <CompositionIdeas @key="point.Id" Ideas="point.Situations" ShowHints="_item.Cues.Formation" />
+            @if (Reviews.Route is not { IsConfigured: true })
+            {
+                <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so reviews can't be checked. Set it up and come back; your points stay due.</div>
+            }
+            <JapaneseInput @ref="_input" @key="_round" AutoFocus="true" Placeholder="Your sentence…"
+                           OnChanged="t => _typed = t.Text" OnSubmit="CheckAsync" />
+            <label class="kn-hint kn-review-intent">
+                What you mean (optional, in English): helps the grader judge your sentence as you meant it.
+                <input class="kn-input" maxlength="@GrammarReviewAttempt.MaxIntentLength" @bind="_intent" @bind:event="oninput"
+                       disabled="@(_verdict is not null)" placeholder="e.g. I studied, but I still failed" />
+            </label>
+            <div class="kn-toolbar">
+                @if (_verdict is null)
+                {
+                    <button class="kn-btn kn-btn-primary" disabled="@(_grading || Reviews.Route is not { IsConfigured: true })" @onclick="CheckAsync">
+                        @(_grading ? "Checking…" : "Check")
+                    </button>
+                    @if (_session.Decided is null)
+                    {
+                        <button class="kn-btn" disabled="@_grading" @onclick="LeaveForLaterAsync" title="Skip this point for now; it stays due">Leave for later</button>
+                    }
+                    else
+                    {
+                        <button class="kn-btn" disabled="@_grading" @onclick="NextAsync">Next</button>
+                    }
+                }
+                else
+                {
+                    @if (!_verdict.Verdict.TargetUsedCorrectly)
+                    {
+                        <button class="kn-btn kn-btn-primary" @onclick="RewriteAsync">Write another</button>
+                    }
+                    <button class="kn-btn @(_verdict.Verdict.TargetUsedCorrectly ? "kn-btn-primary" : "")" @onclick="NextAsync">Next</button>
+                }
+            </div>
+            @if (_problem is not null)
+            {
+                <div class="kn-msg kn-msg-err">@_problem</div>
+            }
+            @if (_gradeError is not null)
+            {
+                <div class="kn-msg kn-msg-err">
+                    Your sentence couldn't be checked: @_gradeError
+                    <button class="kn-btn kn-btn-sm" disabled="@_grading" @onclick="CheckAsync">Retry</button>
+                </div>
+            }
+            @if (_verdict is { } r)
+            {
+                <GradingVerdictView Verdict="r.Verdict" Sentence="@_checked">
+                    <p class="kn-review-effect">@Effect(r)</p>
+                    @if (r.SavedNote is not null)
+                    {
+                        <p class="kn-hint">@r.SavedNote</p>
+                    }
+                </GradingVerdictView>
+                @if (_item.Earlier.Count > 0)
+                {
+                    <h3>Your earlier sentences with @entry.Pattern</h3>
+                    <ul class="kn-review-earlier">
+                        @foreach (string sentence in _item.Earlier.Take(8))
+                        {
+                            <li class="kn-jp">@sentence</li>
+                        }
+                    </ul>
+                }
+            }
+        </div>
+        <div class="kn-toolbar">
+            <a class="kn-btn" href="/grammar/point/@point.Id">This point's lesson</a>
+        </div>
+    </div>
+}
+
+@code {
+    private TutorSession? _session;
+    private GrammarReviewItem? _item;
+    private SrsStage _stage;
+
+    private JapaneseInput? _input;
+    private int _round;
+    private string _typed = "";
+    private string _intent = "";
+    private string _checked = "";
+    private bool _grading;
+    private GrammarReviewResult? _verdict;
+    private string? _problem;
+    private string? _gradeError;
+    private CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _session = await Reviews.StartAsync(DateTime.UtcNow);
+        await LoadCurrentAsync();
+    }
+
+    /// <summary>Show the session's current point, skipping any that have gone (deleted, or no longer learned).</summary>
+    private async Task LoadCurrentAsync()
+    {
+        _item = null;
+        while (_session!.Current is int id) {
+            if (await Reviews.GetAsync(id) is { } item) {
+                _item = item;
+                _stage = item.Point.Srs!.Stage;
+                break;
+            }
+            _session.LeaveForLater();
+        }
+        _intent = "";
+        ResetRound();
+    }
+
+    private void ResetRound()
+    {
+        _round++;
+        _typed = "";
+        _checked = "";
+        _verdict = null;
+        _problem = null;
+        _gradeError = null;
+    }
+
+    private async Task CheckAsync()
+    {
+        if (_session is null || _item is null || _grading || _verdict is not null) {
+            return;
+        }
+        string sentence = GrammarContent.CleanSentence(_typed);
+        if (sentence.Length == 0) {
+            return;
+        }
+        _grading = true;
+        _problem = null;
+        _gradeError = null;
+        StateHasChanged();
+        try {
+            (GrammarReviewResult? result, string? problem) = await Reviews.GradeAsync(_session, sentence, _intent, _cts.Token);
+            _problem = problem;
+            if (result is not null) {
+                _verdict = result;
+                _checked = sentence;
+            }
+        } catch (LlmException ex) {
+            _gradeError = ex.Message;
+        } catch (OperationCanceledException) {
+            return;
+        } finally {
+            _grading = false;
+        }
+    }
+
+    /// <summary>After a miss: a fresh sentence, as practice (the review is already decided).</summary>
+    private async Task RewriteAsync()
+    {
+        _intent = "";
+        ResetRound();
+        await Task.Yield();
+        if (_input is not null) {
+            await _input.FocusAsync();
+        }
+    }
+
+    private async Task NextAsync()
+    {
+        if (_session!.Next()) {
+            await LoadCurrentAsync();
+        }
+    }
+
+    private async Task LeaveForLaterAsync()
+    {
+        if (_session!.LeaveForLater()) {
+            await LoadCurrentAsync();
+        }
+    }
+
+    private static string Effect(GrammarReviewResult r) => r.Effect switch {
+        GrammarReviewEffect.Advanced => $"Counted as a pass: {SrsSchedule.DisplayName(r.StageBefore)} → {SrsSchedule.DisplayName(r.StageAfter)}.",
+        GrammarReviewEffect.Dropped => (r.StageBefore == r.StageAfter
+                ? $"Counted as a miss: the point stays at {SrsSchedule.DisplayName(r.StageAfter)}, the first stage, and comes back in a few hours."
+                : $"Counted as a miss: {SrsSchedule.DisplayName(r.StageBefore)} → {SrsSchedule.DisplayName(r.StageAfter)}.")
+            + " Write another sentence to practise; it won't change the stage.",
+        GrammarReviewEffect.Kept => $"The grader wasn't sure, so this miss doesn't count: the point stays at {SrsSchedule.DisplayName(r.StageAfter)} and comes back at the same stage. Write another sentence to practise.",
+        _ => "Practice: the review was already decided, so this doesn't change the stage.",
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

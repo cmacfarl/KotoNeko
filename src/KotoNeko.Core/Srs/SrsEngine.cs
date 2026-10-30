@@ -47,6 +47,19 @@ public static class SrsEngine
         }
     }
 
+    /// <summary>
+    /// Review the item again after its current stage's interval, without moving it:
+    /// for a result that shouldn't count either way (a grader's low-confidence miss).
+    /// </summary>
+    public static void Repeat(SrsItem item, DateTime now)
+    {
+        if (item.Stage is SrsStage.Locked or SrsStage.Burned)
+        {
+            return;
+        }
+        ScheduleNext(item, now);
+    }
+
     /// <summary>Move the item up one stage, scheduling the next review.</summary>
     private static void Advance(SrsItem item, DateTime now)
     {

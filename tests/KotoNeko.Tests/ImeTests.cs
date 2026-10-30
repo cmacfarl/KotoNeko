@@ -287,6 +287,39 @@ public class KanaKanjiConverterTests
         Assert.Equal("コーヒー", Kana.ToKatakana("こーひー"));
         Assert.Equal("新聞を", Kana.ToHiragana("新聞ヲ"));
     }
+
+    [Fact]
+    public async Task いった_Offers_行った_Among_Its_Many_Verbs()
+    {
+        // The verbs JMdict has whose past is いった, ranked as the importer ranks them,
+        // in JMdict's entry order (煎る's entry comes first).
+        DictionaryWord[] words =
+        {
+            W("いる", "煎る", WordType.Godan, rank: 10, order: 1),
+            W("いる", "炒る", WordType.Godan, rank: 10, order: 2),
+            W("いる", "入る", WordType.Godan, rank: 10, order: 3),
+            W("いる", "要る", WordType.Godan, order: 4),
+            W("いる", "いる", WordType.Godan, rank: 5, order: 5),
+            W("いる", "居る", WordType.Ichidan, order: 6),
+            W("いく", "行く", WordType.Godan, order: 7),
+            W("いく", "逝く", WordType.Godan, rank: 10, order: 8),
+            W("いく", "いく", WordType.Godan, rank: 5, order: 9),
+            W("いう", "言う", WordType.Godan, order: 10),
+            W("いう", "云う", WordType.Godan, rank: 10, order: 11),
+            W("いう", "いう", WordType.Godan, rank: 5, order: 12),
+            W("まち", "町"),
+            W("に", "に", particle: true),
+            W("のに", "のに", particle: true),
+        };
+        KanaKanjiConverter converter = new(new FakeLookup(words));
+
+        IReadOnlyList<ConversionSegment> segments = await converter.ConvertAsync("まちにいったのに");
+
+        Assert.Equal(new[] { "まち", "に", "いった", "のに" }, segments.Select(s => s.Reading));
+        IReadOnlyList<string> candidates = segments[2].Candidates;
+        Assert.Equal(new[] { "要った", "行った", "言った" }, candidates.Take(3));
+        Assert.DoesNotContain("居った", candidates);
+    }
 }
 
 public class ConverterSplitTests

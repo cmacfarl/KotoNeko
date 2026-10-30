@@ -574,6 +574,66 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("GrammarList", (string)null);
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarReviewAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AttemptedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<int>("Effect")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GrammarPointId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Intent")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<bool>("Natural")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("PromptVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Sentence")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<int>("StageAfter")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StageBefore")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("TargetUsedCorrectly")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("VerdictJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GrammarPointId", "AttemptedAt");
+
+                    b.ToTable("GrammarReviewAttempts");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.ImeChoice", b =>
                 {
                     b.Property<int>("Id")
@@ -1214,6 +1274,17 @@ namespace KotoNeko.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("GrammarExample");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.GrammarReviewAttempt", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.GrammarPoint", "GrammarPoint")
+                        .WithMany()
+                        .HasForeignKey("GrammarPointId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GrammarPoint");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>

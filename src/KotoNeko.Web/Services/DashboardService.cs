@@ -43,6 +43,9 @@ public class DashboardSummary
 
     public int GrammarLessonsOpenNow => Math.Min(GrammarLessonsAvailable, GrammarLessonsLeftToday);
 
+    /// <summary>Learned grammar points due for review now.</summary>
+    public int GrammarReviewsDue { get; init; }
+
     /// <summary>Recent accuracy hearing words (listening questions).</summary>
     public Accuracy ByEar { get; init; } = new(0, 0);
 
@@ -84,7 +87,7 @@ public class DashboardService
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
 
-        // Vocabulary only: grammar points have their own lessons and (from Phase 5) reviews.
+        // Vocabulary only: grammar points have their own lessons and reviews.
         IQueryable<StudyItem> words = db.StudyItems.Where(i => i.Kind == StudyItemKind.Vocabulary);
         IQueryable<SrsItem> wordSrs = db.SrsItems.Where(s => s.StudyItem!.Kind == StudyItemKind.Vocabulary);
 
@@ -160,6 +163,7 @@ public class DashboardService
         LessonAllowance allowance = await ReviewService.GetLessonAllowanceAsync(db, now);
         GrammarAllowance grammarAllowance = await GrammarPointService.GetAllowanceAsync(db, now);
         int grammarLessons = await GrammarPointService.CountLessonsAvailableAsync(db);
+        int grammarReviews = await GrammarReviewService.CountDueAsync(db, now);
 
         DateTime accuracySince = now - AccuracyWindow;
         Accuracy byEar = await AccuracyAsync(db, accuracySince, ListeningTypes);
@@ -174,6 +178,7 @@ public class DashboardService
             LessonsLeftToday = allowance.LeftToday,
             GrammarLessonsAvailable = grammarLessons,
             GrammarLessonsLeftToday = grammarAllowance.LeftToday,
+            GrammarReviewsDue = grammarReviews,
             ByEar = byEar,
             BySight = bySight,
             EarGaps = earGaps,

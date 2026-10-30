@@ -51,6 +51,7 @@ public static class LlmAccounting
         LlmFeature.LessonGrading => "Grammar lesson grading",
         LlmFeature.GradingEval => "Grading eval",
         LlmFeature.Prelabelling => "Test-set pre-labelling",
+        LlmFeature.ReviewGrading => "Grammar review grading",
         _ => "Other",
     };
 

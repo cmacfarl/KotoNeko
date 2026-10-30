@@ -276,7 +276,9 @@ window.kotoneko = window.kotoneko || {};
     // Japanese input: a small in-page IME, so the Windows IME can stay off.
     // Romaji becomes kana as it is typed (the "composition", always at the end
     // of the text). Space converts the composition with the server's offline
-    // dictionary into segments, each with kanji candidates:
+    // dictionary into segments, each with kanji candidates (shown nine at a
+    // time, the page following the selection; segments and candidates can also
+    // be clicked):
     //   Space / ↓ next candidate, ↑ previous, 1–9 pick, ← / → change segment,
     //   Shift+← / → shrink or grow the segment, F7 katakana, F6 hiragana,
     //   Enter commit, Esc back to kana (or drop the kana), Backspace back to kana.
@@ -331,6 +333,10 @@ window.kotoneko = window.kotoneko || {};
                 locked: false    // typing is ignored (see setLocked)
             };
 
+            // Candidates show a page at a time; the page holds the selected one.
+            const PageSize = 9;
+            const pageOf = g => Math.floor(g.index / PageSize);
+
             const display = () => s.segs
                 ? s.segs.map(g => g.candidates[g.index]).join("")
                 : s.comp;
@@ -365,24 +371,39 @@ window.kotoneko = window.kotoneko || {};
                         const span = document.createElement("span");
                         span.className = "kn-ime-seg" + (i === s.focus ? " active" : "");
                         span.textContent = g.candidates[g.index];
+                        span.title = "Click to change this word";
+                        // mousedown, so the input keeps its focus.
+                        span.addEventListener("mousedown", e => { e.preventDefault(); s.focus = i; render(); });
                         row.appendChild(span);
                     });
                     strip.appendChild(row);
 
                     const focused = s.segs[s.focus];
+                    const page = pageOf(focused);
                     const list = document.createElement("ol");
                     list.className = "kn-ime-candidates";
-                    focused.candidates.slice(0, 9).forEach((c, i) => {
+                    focused.candidates.slice(page * PageSize, page * PageSize + PageSize).forEach((c, i) => {
+                        const index = page * PageSize + i;
                         const li = document.createElement("li");
-                        li.className = i === focused.index ? "active" : "";
+                        li.className = index === focused.index ? "active" : "";
                         const n = document.createElement("span");
                         n.className = "kn-ime-num";
                         n.textContent = String(i + 1);
                         li.appendChild(n);
                         li.appendChild(document.createTextNode(c));
+                        li.addEventListener("mousedown", e => { e.preventDefault(); focused.index = index; render(); });
                         list.appendChild(li);
                     });
                     strip.appendChild(list);
+
+                    const hint = document.createElement("div");
+                    hint.className = "kn-ime-hint";
+                    const count = focused.candidates.length > PageSize
+                        ? `${focused.index + 1} of ${focused.candidates.length} · ` : "";
+                    hint.textContent = count + "Space next spelling"
+                        + (s.segs.length > 1 ? " · ← → other word" : "")
+                        + " · Shift+← → shorter/longer word · Enter done";
+                    strip.appendChild(hint);
                 } else if (s.comp) {
                     const hint = document.createElement("div");
                     hint.className = "kn-ime-hint";
@@ -521,8 +542,9 @@ window.kotoneko = window.kotoneko || {};
                     if (e.key === "F7") { handled(); useSpelling(hiraganaToKatakana(s.segs[s.focus].reading)); return; }
                     if (e.key === "F6") { handled(); useSpelling(katakanaToHiragana(s.segs[s.focus].reading)); return; }
                     if (plain && /^[1-9]$/.test(e.key)) {
-                        const n = Number(e.key) - 1;
-                        if (n < s.segs[s.focus].candidates.length) { handled(); s.segs[s.focus].index = n; render(); }
+                        const g = s.segs[s.focus];
+                        const n = pageOf(g) * PageSize + Number(e.key) - 1;
+                        if (n < g.candidates.length) { handled(); g.index = n; render(); }
                         return;
                     }
                     // Any other typing keeps the conversion and starts afresh.

@@ -1,0 +1,75 @@
+@* Help with a blank page when writing a sentence of your own: on request, an idea
+   (a short topic, with a structure hint where the stage allows) and a few words you
+   know. Nothing here is a task: the sentence stays free composition. *@
+@inject GrammarPointService Points
+
+<div class="kn-ideas">
+    @if (!_open)
+    {
+        <button class="kn-btn kn-btn-sm" @onclick="OpenAsync">💡 Need an idea?</button>
+    }
+    else
+    {
+        @if (Ideas.Count > 0)
+        {
+            GrammarSituation idea = Ideas[_index % Ideas.Count];
+            <div class="kn-ideas-row">
+                <span class="kn-ideas-label">Idea</span>
+                <span>@idea.Situation</span>
+                @if (Ideas.Count > 1)
+                {
+                    <button class="kn-btn kn-btn-sm" @onclick="() => _index++">Another</button>
+                }
+            </div>
+            @if (ShowHints && idea.Hint.Length > 0)
+            {
+                <div class="kn-ideas-row"><span class="kn-ideas-label">Shape</span><span class="kn-grammar-pattern">@idea.Hint</span></div>
+            }
+        }
+        @if (_words.Count > 0)
+        {
+            <div class="kn-ideas-row">
+                <span class="kn-ideas-label">Words you know</span>
+                <span>
+                    @for (int i = 0; i < _words.Count; i++)
+                    {
+                        IdeaWord word = _words[i];
+                        <span class="kn-jp">@word.Japanese</span>
+                        @if (word.Meaning.Length > 0)
+                        {
+                            <span class="kn-hint"> (@word.Meaning)</span>
+                        }
+                        @(i < _words.Count - 1 ? " · " : "")
+                    }
+                </span>
+                <button class="kn-btn kn-btn-sm" @onclick="LoadWordsAsync">Other words</button>
+            </div>
+        }
+        <div class="kn-hint">Use any of these, or none: write what you like.</div>
+    }
+</div>
+
+@code {
+    /// <summary>The point's ideas (its stored situations).</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<GrammarSituation> Ideas { get; set; } = Array.Empty<GrammarSituation>();
+
+    /// <summary>Whether to show each idea's structure hint (lessons, and Apprentice reviews).</summary>
+    [Parameter] public bool ShowHints { get; set; } = true;
+
+    private bool _open;
+    private int _index;
+    private List<IdeaWord> _words = new();
+
+    private async Task OpenAsync()
+    {
+        _open = true;
+        // Start somewhere different each time, so the first idea isn't always the same one.
+        _index = Ideas.Count > 0 ? Random.Shared.Next(Ideas.Count) : 0;
+        await LoadWordsAsync();
+    }
+
+    private async Task LoadWordsAsync()
+    {
+        _words = await Points.IdeaWordsAsync();
+    }
+}
