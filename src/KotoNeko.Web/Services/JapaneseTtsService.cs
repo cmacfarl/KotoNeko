@@ -34,12 +34,13 @@ public sealed class JapaneseTtsService : IDisposable
         "ja-JP-Chirp3-HD-Zephyr",
     };
 
-    private const string TtsEndpoint =
+    private const string DefaultEndpoint =
         "https://texttospeech.googleapis.com/v1/text:synthesize";
 
     private readonly HttpClient  _http;
     private readonly string      _apiKey;
     private readonly string[]    _voices;
+    private readonly string      _endpoint;
     private          int         _voiceIndex;
     private          bool        _disposed;
 
@@ -52,10 +53,28 @@ public sealed class JapaneseTtsService : IDisposable
     /// Optional externally-managed HttpClient (e.g. from IHttpClientFactory).
     /// When null an internal instance is created and disposed with the service.
     /// </param>
-    public JapaneseTtsService(string apiKey, string[]? voices = null, HttpClient? httpClient = null) {
-        _apiKey  = apiKey ?? string.Empty;
-        _voices  = (voices is { Length: > 0 }) ? voices : DefaultVoices;
-        _http    = httpClient ?? new HttpClient();
+    /// <param name="endpoint">
+    /// The synthesize URL (Tts:Endpoint); Google's when null. Lets a test point it at a stand-in.
+    /// </param>
+    public JapaneseTtsService(string apiKey, string[]? voices = null, HttpClient? httpClient = null, string? endpoint = null) {
+        _apiKey   = apiKey ?? string.Empty;
+        _voices   = (voices is { Length: > 0 }) ? voices : DefaultVoices;
+        _http     = httpClient ?? new HttpClient();
+        _endpoint = string.IsNullOrWhiteSpace(endpoint) ? DefaultEndpoint : endpoint;
+    }
+
+    /// <summary>Whether a key is set, so audio can be generated at all.</summary>
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+    /// <summary>Speak <paramref name="text"/> in a given voice (a listening script keeps one voice per speaker).</summary>
+    public async Task<TtsResult> SynthesiseWithVoiceAsync(string text, string voice, SpeechSpeed speed) {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+            throw new InvalidOperationException("Google TTS API key is not configured. Set GoogleTtsApiKey in appsettings.json.");
+        if (string.IsNullOrWhiteSpace(text))
+            throw new ArgumentNullException(nameof(text));
+
+        string base64 = await CallGoogleTtsAsync(text, voice, speed.Rate()).ConfigureAwait(false);
+        return new TtsResult { Audio = Base64ToM4a(base64), VoiceUsed = voice };
     }
 
     /// <param name="speed">
@@ -100,7 +119,7 @@ public sealed class JapaneseTtsService : IDisposable
         };
 
         string json    = JsonSerializer.Serialize(requestBody);
-        string url     = $"{TtsEndpoint}?key={Uri.EscapeDataString(_apiKey)}";
+        string url     = $"{_endpoint}?key={Uri.EscapeDataString(_apiKey)}";
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await _http.PostAsync(url, content).ConfigureAwait(false);
 

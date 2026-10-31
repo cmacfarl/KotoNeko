@@ -56,6 +56,12 @@ public enum LlmFeature
 
     /// <summary>Answering a "Why?" question about a verdict.</summary>
     WhyQuestion = 9,
+
+    /// <summary>Writing a story or dialogue for extensive listening.</summary>
+    ListeningScript = 10,
+
+    /// <summary>Grading an answer to a listening script's comprehension question.</summary>
+    ListeningComprehension = 11,
 }
 
 /// <summary>How an LLM call ended, for the call log.</summary>

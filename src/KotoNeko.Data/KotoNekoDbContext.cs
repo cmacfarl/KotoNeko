@@ -33,6 +33,11 @@ public class KotoNekoDbContext : DbContext
     public DbSet<GrammarPoint> GrammarPoints => Set<GrammarPoint>();
     public DbSet<GrammarExample> GrammarExamples => Set<GrammarExample>();
     public DbSet<GrammarReviewAttempt> GrammarReviewAttempts => Set<GrammarReviewAttempt>();
+    public DbSet<ListeningScript> ListeningScripts => Set<ListeningScript>();
+    public DbSet<ListeningLine> ListeningLines => Set<ListeningLine>();
+    public DbSet<ListeningLineAudio> ListeningLineAudios => Set<ListeningLineAudio>();
+    public DbSet<ListeningLog> ListeningLogs => Set<ListeningLog>();
+    public DbSet<ListeningAnswer> ListeningAnswers => Set<ListeningAnswer>();
     public DbSet<GrammarExampleAudio> GrammarExampleAudios => Set<GrammarExampleAudio>();
     public DbSet<LlmCall> LlmCalls => Set<LlmCall>();
     public DbSet<GradingTestItem> GradingTestItems => Set<GradingTestItem>();
@@ -166,6 +171,7 @@ public class KotoNekoDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ListeningScriptModel).HasMaxLength(KotoNeko.Core.Domain.StudySettings.MaxModelChoiceLength).IsRequired();
             entity.HasData(new StudySettings());
         });
 
@@ -360,6 +366,61 @@ public class KotoNekoDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Audio).HasColumnType("longblob").IsRequired();
             entity.HasIndex(e => e.PracticeSentenceId).IsUnique();
+        });
+
+        modelBuilder.Entity<ListeningScript>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).HasMaxLength(ListeningScript.MaxTitleLength).IsRequired();
+            entity.Property(e => e.TitleEnglish).HasMaxLength(ListeningScript.MaxTitleLength).IsRequired();
+            entity.Property(e => e.Topic).HasMaxLength(ListeningScript.MaxTopicLength).IsRequired();
+            entity.Property(e => e.Question).HasMaxLength(ListeningScript.MaxQuestionLength).IsRequired();
+            entity.Property(e => e.AnswerPoints).HasColumnType("text").IsRequired();
+            entity.Property(e => e.NewWords).HasColumnType("text").IsRequired();
+            entity.Property(e => e.Writer).HasMaxLength(ListeningScript.MaxWriterLength).IsRequired();
+            entity.Property(e => e.FlagNote).HasMaxLength(ListeningScript.MaxFlagNoteLength).IsRequired();
+            entity.HasMany(e => e.Lines)
+                .WithOne(l => l.ListeningScript)
+                .HasForeignKey(l => l.ListeningScriptId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.CreatedAt);
+        });
+
+        modelBuilder.Entity<ListeningLine>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Speaker).HasMaxLength(1).IsRequired();
+            entity.Property(e => e.Text).HasMaxLength(ListeningLine.MaxTextLength).IsRequired();
+            entity.Property(e => e.English).HasMaxLength(ListeningLine.MaxEnglishLength).IsRequired();
+            entity.HasOne(e => e.Audio)
+                .WithOne(a => a.ListeningLine)
+                .HasForeignKey<ListeningLineAudio>(a => a.ListeningLineId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.ListeningScriptId, e.SortOrder });
+        });
+
+        modelBuilder.Entity<ListeningLineAudio>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Audio).HasColumnType("longblob").IsRequired();
+            entity.HasIndex(e => e.ListeningLineId).IsUnique();
+        });
+
+        modelBuilder.Entity<ListeningLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.ListeningScript).WithMany().HasForeignKey(e => e.ListeningScriptId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.ListenedAt);
+        });
+
+        modelBuilder.Entity<ListeningAnswer>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Answer).HasMaxLength(ListeningAnswer.MaxAnswerLength).IsRequired();
+            entity.Property(e => e.VerdictJson).HasColumnType("text").IsRequired();
+            entity.Property(e => e.PromptVersion).HasMaxLength(100).IsRequired();
+            entity.HasOne(e => e.ListeningScript).WithMany().HasForeignKey(e => e.ListeningScriptId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.ListeningScriptId, e.AnsweredAt });
         });
 
         modelBuilder.Entity<GrammarExampleAudio>(entity =>

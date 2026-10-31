@@ -681,6 +681,60 @@ window.kotoneko = window.kotoneko || {};
         playNext(0);
     };
 
+    // The listening player: plays clips in order with a pause between, one run at a
+    // time page-wide (a new play stops the old one), and stop() ends it. Resolves
+    // with the seconds of audio actually heard, for the daily listening minutes.
+    let listeningRun = null;
+
+    function finishListening(run) {
+        if (run.done) return;
+        run.done = true;
+        if (run.audio) {
+            run.seconds += run.audio.currentTime || 0;
+            run.audio.pause();
+        }
+        clearTimeout(run.timer);
+        if (listeningRun === run) listeningRun = null;
+        run.resolve(run.seconds);
+    }
+
+    k.listening = {
+        play: function (urls, pauseMs) {
+            if (listeningRun) finishListening(listeningRun);
+            return new Promise(function (resolve) {
+                const run = { done: false, audio: null, timer: null, seconds: 0, resolve: resolve };
+                listeningRun = run;
+                function next(index) {
+                    if (run.done) return;
+                    if (index >= urls.length) { finishListening(run); return; }
+                    const audio = new Audio(urls[index]);
+                    let moved = false;
+                    const skip = function () {
+                        if (moved) return;
+                        moved = true;
+                        run.audio = null;
+                        next(index + 1);
+                    };
+                    run.audio = audio;
+                    audio.onended = function () {
+                        if (moved) return;
+                        moved = true;
+                        run.seconds += audio.duration || 0;
+                        run.audio = null;
+                        run.timer = setTimeout(function () { next(index + 1); }, pauseMs);
+                    };
+                    audio.onerror = skip;
+                    audio.play().catch(skip);
+                }
+                next(0);
+            });
+        },
+
+        stop: function () {
+            if (listeningRun) finishListening(listeningRun);
+        }
+    };
+
     // Play audio from a raw byte array passed by Blazor (used for edit-page preview).
     k.playAudioBytes = function (bytes) {
         const blob = new Blob([bytes], { type: "audio/mpeg" });

@@ -697,6 +697,197 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("ImeChoices");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningAnswer", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Answer")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime>("AnsweredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("ListeningScriptId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PromptVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("Understood")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VerdictJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListeningScriptId", "AnsweredAt");
+
+                    b.ToTable("ListeningAnswers");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("English")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<bool>("HasAudio")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("ListeningScriptId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Speaker")
+                        .IsRequired()
+                        .HasMaxLength(1)
+                        .HasColumnType("varchar(1)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListeningScriptId", "SortOrder");
+
+                    b.ToTable("ListeningLines");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningLineAudio", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte[]>("Audio")
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<int>("ListeningLineId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListeningLineId")
+                        .IsUnique();
+
+                    b.ToTable("ListeningLineAudios");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("ListenedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("ListeningScriptId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Seconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListenedAt");
+
+                    b.HasIndex("ListeningScriptId");
+
+                    b.ToTable("ListeningLogs");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningScript", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AnswerPoints")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FlagNote")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<bool>("Flagged")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NewWords")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("TitleEnglish")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Writer")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("ListeningScripts");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>
                 {
                     b.Property<int>("Id")
@@ -966,6 +1157,9 @@ namespace KotoNeko.Data.Migrations
                     b.Property<int>("DailyLessonCap")
                         .HasColumnType("int");
 
+                    b.Property<int>("DailyListeningMinutes")
+                        .HasColumnType("int");
+
                     b.Property<int>("DailyMinutesTarget")
                         .HasColumnType("int");
 
@@ -981,6 +1175,11 @@ namespace KotoNeko.Data.Migrations
                     b.Property<bool>("ListeningEnabled")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("ListeningScriptModel")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
                     b.Property<int>("SpeechSpeed")
                         .HasColumnType("int");
 
@@ -995,11 +1194,13 @@ namespace KotoNeko.Data.Migrations
                             DailyDictationCap = 10,
                             DailyGrammarCap = 2,
                             DailyLessonCap = 15,
+                            DailyListeningMinutes = 13,
                             DailyMinutesTarget = 60,
                             KnownWordStage = 5,
                             LessonBatchSize = 5,
                             ListeningCountsTowardSrs = false,
                             ListeningEnabled = true,
+                            ListeningScriptModel = "",
                             SpeechSpeed = 0
                         });
                 });
@@ -1316,6 +1517,50 @@ namespace KotoNeko.Data.Migrations
                     b.Navigation("GrammarPoint");
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningAnswer", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.ListeningScript", "ListeningScript")
+                        .WithMany()
+                        .HasForeignKey("ListeningScriptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ListeningScript");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningLine", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.ListeningScript", "ListeningScript")
+                        .WithMany("Lines")
+                        .HasForeignKey("ListeningScriptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ListeningScript");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningLineAudio", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.ListeningLine", "ListeningLine")
+                        .WithOne("Audio")
+                        .HasForeignKey("KotoNeko.Core.Domain.ListeningLineAudio", "ListeningLineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ListeningLine");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningLog", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.ListeningScript", "ListeningScript")
+                        .WithMany()
+                        .HasForeignKey("ListeningScriptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ListeningScript");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>
                 {
                     b.HasOne("KotoNeko.Core.Domain.Vocabulary", "Vocabulary")
@@ -1428,6 +1673,16 @@ namespace KotoNeko.Data.Migrations
             modelBuilder.Entity("KotoNeko.Core.Domain.GrammarExample", b =>
                 {
                     b.Navigation("Audio");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningLine", b =>
+                {
+                    b.Navigation("Audio");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.ListeningScript", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.PracticeSentence", b =>

@@ -55,6 +55,8 @@ public static class LlmAccounting
         LlmFeature.SecondOpinion => "Second opinion (unsure miss)",
         LlmFeature.Dispute => "Disputed verdict",
         LlmFeature.WhyQuestion => "\"Why?\" questions",
+        LlmFeature.ListeningScript => "Listening scripts",
+        LlmFeature.ListeningComprehension => "Listening comprehension",
         _ => "Other",
     };
 

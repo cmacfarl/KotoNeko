@@ -1,0 +1,157 @@
+@page "/listening"
+@implements IDisposable
+@using KotoNeko.Core.Llm
+@inject ListeningService Scripts
+@inject NavigationManager Nav
+
+<PageTitle>Listening · KotoNeko</PageTitle>
+
+<div class="kn-toolbar" style="justify-content:space-between">
+    <h1 style="margin:0">Listening</h1>
+    @if (_today is { } today)
+    {
+        <span class="kn-hint">@today.Minutes of @Minutes(today.Cap) today</span>
+    }
+</div>
+<p class="kn-hint">
+    Short stories and dialogues at your level, from the words and grammar you know plus a little new. Listen first with no
+    text, then replay line by line with the transcript, and answer one question in English.
+</p>
+
+<div class="kn-panel">
+    <h2>Write a new one</h2>
+    @if (_writer is null)
+    {
+        <div class="kn-msg kn-msg-err">No model is set up to write scripts: choose one in <a href="/settings">Settings</a>, or set Llm:Jobs:Generate.</div>
+    }
+    else
+    {
+        <div class="kn-toolbar">
+            <select class="kn-select" style="width:auto" @bind="_kind" disabled="@_writing">
+                <option value="@ListeningKind.Dialogue">Dialogue (two people)</option>
+                <option value="@ListeningKind.Story">Story (a narrator)</option>
+            </select>
+            <input class="kn-input" style="flex:1;min-width:14rem" maxlength="@ListeningScript.MaxTopicLength" placeholder="Topic (optional), e.g. buying a train ticket"
+                   @bind="_topic" @bind:event="oninput" disabled="@_writing" />
+            <button class="kn-btn kn-btn-primary" disabled="@_writing" @onclick="WriteAsync">@(_writing ? "Writing…" : "Write it")</button>
+        </div>
+        <p class="kn-hint">Written by @_writer.Provider · @_writer.Model (change it in <a href="/settings">Settings</a>), then voiced with Google TTS.</p>
+        @if (_confirmOverCap)
+        {
+            <div class="kn-msg">
+                You've reached today's @Minutes(_today?.Cap ?? 0). Write another anyway?
+                <button class="kn-btn kn-btn-sm kn-btn-primary" @onclick="() => WriteAsync(force: true)">Write it anyway</button>
+                <button class="kn-btn kn-btn-sm" @onclick="() => _confirmOverCap = false">Not today</button>
+            </div>
+        }
+        @if (_status is not null)
+        {
+            <p class="kn-hint">@_status</p>
+        }
+        @if (_error is not null)
+        {
+            <div class="kn-msg kn-msg-err">@_error</div>
+        }
+    }
+</div>
+
+<div class="kn-panel">
+    <h2>Your scripts</h2>
+    @if (_library is null)
+    {
+        <p class="kn-empty">Loading…</p>
+    }
+    else if (_library.Count == 0)
+    {
+        <p class="kn-empty">Nothing yet. Write your first one above.</p>
+    }
+    else
+    {
+        <table class="kn-table">
+            <thead>
+            <tr><th>Title</th><th>Kind</th><th>Lines</th><th>Written by</th><th>Listened</th><th>Understood</th></tr>
+            </thead>
+            <tbody>
+            @foreach (ListeningSummary s in _library)
+            {
+                <tr>
+                    <td>
+                        <a href="/listening/@s.Id">@(s.TitleEnglish.Length > 0 ? s.TitleEnglish : "(untitled)")</a>
+                        @if (s.Flagged)
+                        {
+                            <span class="kn-pill kn-pill-donotuse">flagged</span>
+                        }
+                        @if (s.LinesWithAudio < s.Lines)
+                        {
+                            <span class="kn-pill">@(s.Lines - s.LinesWithAudio) without audio</span>
+                        }
+                    </td>
+                    <td>@s.Kind</td>
+                    <td>@s.Lines</td>
+                    <td class="kn-hint">@s.Writer</td>
+                    <td>@(s.Listens == 0 ? "not yet" : $"{s.Listens}×")</td>
+                    <td>@(s.LastUnderstood?.ToString() ?? "")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<ListeningSummary>? _library;
+    private ListeningToday? _today;
+    private ModelChoice? _writer;
+    private ListeningKind _kind = ListeningKind.Dialogue;
+    private string _topic = "";
+    private bool _writing;
+    private bool _confirmOverCap;
+    private string? _status;
+    private string? _error;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _writer = await Scripts.WriterAsync();
+        _today = await Scripts.TodayAsync(DateTime.UtcNow);
+        _library = await Scripts.LibraryAsync();
+    }
+
+    private static string Minutes(int n) => n == 1 ? "1 minute" : $"{n} minutes";
+
+    private async Task WriteAsync() => await WriteAsync(force: false);
+
+    private async Task WriteAsync(bool force)
+    {
+        if (_writing) {
+            return;
+        }
+        if (!force && _today is { Reached: true }) {
+            _confirmOverCap = true;
+            return;
+        }
+        _confirmOverCap = false;
+        _writing = true;
+        _error = null;
+        try {
+            (int id, string? note) = await Scripts.WriteAsync(_kind, _topic, async status => {
+                _status = status;
+                await InvokeAsync(StateHasChanged);
+            }, _cts.Token);
+            Nav.NavigateTo(note is null ? $"/listening/{id}" : $"/listening/{id}?note={Uri.EscapeDataString(note)}");
+        } catch (LlmException ex) {
+            _error = $"The script couldn't be written: {ex.Message}";
+        } catch (OperationCanceledException) {
+            return;
+        } finally {
+            _writing = false;
+            _status = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

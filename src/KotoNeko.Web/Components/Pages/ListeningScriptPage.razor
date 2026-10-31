@@ -1,0 +1,333 @@
+@page "/listening/{Id:int}"
+@implements IDisposable
+@using KotoNeko.Core.Llm
+@inject ListeningService Listening
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Listening · KotoNeko</PageTitle>
+
+@if (_loading)
+{
+    <p class="kn-empty">Loading…</p>
+}
+else if (_view is null)
+{
+    <div class="kn-panel"><p class="kn-empty">That script no longer exists. <a href="/listening">Back to listening</a>.</p></div>
+}
+else
+{
+    ListeningScript script = _view.Script;
+    bool dialogue = script.Kind == ListeningKind.Dialogue;
+    <p class="kn-hint"><a href="/listening">Listening</a> · @(dialogue ? "Dialogue" : "Story") · JLPT @script.Level · written by @script.Writer</p>
+    <h1>@(_transcript ? script.Title : dialogue ? "A dialogue" : "A story")</h1>
+    @if (_transcript && script.TitleEnglish.Length > 0)
+    {
+        <p class="kn-hint">@script.TitleEnglish</p>
+    }
+
+    @if (_note is not null)
+    {
+        <div class="kn-msg kn-msg-err">@_note</div>
+    }
+
+    <div class="kn-panel">
+        <h2>Listen</h2>
+        @if (Voiced.Count == 0)
+        {
+            <p class="kn-empty">No audio yet.</p>
+        }
+        else
+        {
+            <div class="kn-toolbar">
+                @if (_playing)
+                {
+                    <button class="kn-btn kn-btn-primary" @onclick="StopAsync">■ Stop</button>
+                }
+                else
+                {
+                    <button class="kn-btn kn-btn-primary" @onclick="PlayAllAsync">▶ Play it all</button>
+                }
+                @if (!_transcript)
+                {
+                    <button class="kn-btn" @onclick="() => _transcript = true">Show the transcript</button>
+                }
+            </div>
+            <p class="kn-hint">
+                @(_transcript ? "Replay any line with its ▶." : "Listen first without the text, as often as you like. Then try the question, or open the transcript.")
+            </p>
+        }
+        @if (Voiced.Count < _view.Lines.Count)
+        {
+            <p class="kn-hint">@(_view.Lines.Count - Voiced.Count) of @_view.Lines.Count lines have no audio.</p>
+            <button class="kn-btn kn-btn-sm" disabled="@_voicing" @onclick="VoiceAsync">@(_voicing ? _voicingStatus ?? "Generating…" : "Generate missing audio")</button>
+        }
+    </div>
+
+    @if (_transcript)
+    {
+        <div class="kn-panel">
+            <div class="kn-toolbar" style="justify-content:space-between">
+                <h2 style="margin:0">Transcript</h2>
+                <label class="kn-hint"><input type="checkbox" @bind="_allEnglish" /> Show all English</label>
+            </div>
+            @foreach (ListeningLineView line in _view.Lines)
+            {
+                <div class="kn-listening-line @(line.Line.Id == _playingLine ? "kn-listening-line-on" : "")">
+                    @if (dialogue)
+                    {
+                        <span class="kn-listening-speaker">@line.Line.Speaker</span>
+                    }
+                    @if (line.Line.HasAudio)
+                    {
+                        <button class="kn-btn kn-btn-sm" @onclick="() => PlayLineAsync(line)">▶</button>
+                    }
+                    <span class="kn-listening-text">
+                        @if (line.View is { } view)
+                        {
+                            <FuriganaText Pieces="view.ForReader(_known)" />
+                        }
+                        else
+                        {
+                            <span class="kn-jp">@line.Line.Text</span>
+                        }
+                    </span>
+                    @if (_allEnglish || _shownEnglish.Contains(line.Line.Id))
+                    {
+                        <div class="kn-listening-english">@line.Line.English</div>
+                    }
+                    else
+                    {
+                        <button class="kn-btn kn-btn-sm kn-listening-reveal" @onclick="() => _shownEnglish.Add(line.Line.Id)">English</button>
+                    }
+                    @if (line.Unknown.Count > 0)
+                    {
+                        <div class="kn-hint">New to you: @string.Join("、", line.Unknown.Select(u => u.Lemma ?? u.Text).Distinct())</div>
+                    }
+                </div>
+            }
+            @if (script.NewWords.Length > 0)
+            {
+                <h3>New words the writer used</h3>
+                <ul class="kn-hint">
+                    @foreach (string word in script.NewWords.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        <li class="kn-jp">@word</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+
+    <div class="kn-panel">
+        <h2>Question</h2>
+        <p>@script.Question</p>
+        @if (Listening.GraderRoute is not { IsConfigured: true })
+        {
+            <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so answers can't be checked.</div>
+        }
+        <textarea class="kn-textarea" rows="2" maxlength="@ListeningAnswer.MaxAnswerLength" placeholder="Your answer, in English…"
+                  @bind="_answer" @bind:event="oninput" disabled="@_checking"></textarea>
+        <div class="kn-toolbar">
+            <button class="kn-btn kn-btn-primary" disabled="@(_checking || string.IsNullOrWhiteSpace(_answer) || Listening.GraderRoute is not { IsConfigured: true })"
+                    @onclick="CheckAsync">@(_checking ? "Checking…" : "Check")</button>
+        </div>
+        @if (_answerError is not null)
+        {
+            <div class="kn-msg kn-msg-err">@_answerError</div>
+        }
+        @if (_result is { } r)
+        {
+            <div class="kn-lesson-verdict @(r.Understood == ListeningUnderstanding.No ? "kn-lesson-verdict-miss" : "kn-lesson-verdict-pass")">
+                <div class="kn-lesson-verdict-head">
+                    @(r.Understood switch {
+                        ListeningUnderstanding.Yes => "✓ You understood it",
+                        ListeningUnderstanding.Partly => "◐ Partly",
+                        _ => "✗ Not quite",
+                    })
+                </div>
+                <p>@r.Verdict.Explanation</p>
+                @if (r.Verdict.Missed is { Count: > 0 } missed)
+                {
+                    <ul>
+                        @foreach (string m in missed)
+                        {
+                            <li>@m</li>
+                        }
+                    </ul>
+                }
+                @if (!_transcript)
+                {
+                    <button class="kn-btn kn-btn-sm" @onclick="() => _transcript = true">Show the transcript</button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="kn-panel">
+        <h2>Something off?</h2>
+        @if (script.Flagged)
+        {
+            <p>Flagged@(script.FlagNote.Length > 0 ? $": {script.FlagNote}" : ".")</p>
+            <button class="kn-btn kn-btn-sm" @onclick="() => FlagAsync(false)">Clear the flag</button>
+        }
+        else
+        {
+            <p class="kn-hint">Flag a script that sounds unnatural or has a mistake, so a native speaker can look at it.</p>
+            <div class="kn-toolbar">
+                <input class="kn-input" style="flex:1" maxlength="@ListeningScript.MaxFlagNoteLength" placeholder="What's wrong (optional)" @bind="_flagNote" />
+                <button class="kn-btn kn-btn-sm" @onclick="() => FlagAsync(true)">Flag it</button>
+            </div>
+        }
+        <button class="kn-btn kn-btn-danger kn-btn-sm" style="margin-top:0.8rem" @onclick="DeleteAsync">Delete this script</button>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "note")] public string? NoteFromWriting { get; set; }
+
+    private ListeningView? _view;
+    private HashSet<string> _known = new();
+    private bool _loading = true;
+    private string? _note;
+
+    private bool _transcript;
+    private bool _allEnglish;
+    private readonly HashSet<int> _shownEnglish = new();
+    private bool _playing;
+    private int? _playingLine;
+    private bool _voicing;
+    private string? _voicingStatus;
+
+    private string _answer = "";
+    private bool _checking;
+    private ComprehensionResult? _result;
+    private string? _answerError;
+    private string _flagNote = "";
+
+    private readonly CancellationTokenSource _cts = new();
+
+    private List<ListeningLineView> Voiced => _view?.Lines.Where(l => l.Line.HasAudio).ToList() ?? new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _note = NoteFromWriting;
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _view = await Listening.GetAsync(Id);
+        _known = await Listening.KnownWordsAsync();
+    }
+
+    private async Task PlayAllAsync() => await PlayAsync(Voiced, null);
+
+    private async Task PlayLineAsync(ListeningLineView line) => await PlayAsync(new List<ListeningLineView> { line }, line.Line.Id);
+
+    private async Task PlayAsync(List<ListeningLineView> lines, int? lineId)
+    {
+        if (_view is null || lines.Count == 0) {
+            return;
+        }
+        _playing = true;
+        _playingLine = lineId;
+        StateHasChanged();
+        double seconds = 0;
+        try {
+            seconds = await JS.InvokeAsync<double>("kotoneko.listening.play", lines.Select(l => l.AudioUrl).ToArray(), 700);
+        } catch (JSException) {
+            // The browser refused to play; nothing heard.
+        } catch (JSDisconnectedException) {
+            return;
+        } finally {
+            _playing = false;
+            _playingLine = null;
+        }
+        await Listening.LogAsync(_view.Script.Id, seconds);
+    }
+
+    private async Task StopAsync()
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.listening.stop");
+        } catch (JSException) {
+            // Already stopped.
+        }
+    }
+
+    private async Task VoiceAsync()
+    {
+        if (_view is null) {
+            return;
+        }
+        _voicing = true;
+        try {
+            _note = await Listening.VoiceAsync(_view.Script.Id, async status => {
+                _voicingStatus = status;
+                await InvokeAsync(StateHasChanged);
+            });
+            await LoadAsync();
+        } finally {
+            _voicing = false;
+            _voicingStatus = null;
+        }
+    }
+
+    private async Task CheckAsync()
+    {
+        if (_view is null || _checking || string.IsNullOrWhiteSpace(_answer)) {
+            return;
+        }
+        _checking = true;
+        _answerError = null;
+        try {
+            _result = await Listening.CheckAnswerAsync(_view.Script.Id, _answer, _cts.Token);
+        } catch (LlmException ex) {
+            _answerError = $"Your answer couldn't be checked: {ex.Message}";
+        } catch (OperationCanceledException) {
+            return;
+        } finally {
+            _checking = false;
+        }
+    }
+
+    private async Task FlagAsync(bool flagged)
+    {
+        if (_view is null) {
+            return;
+        }
+        await Listening.FlagAsync(_view.Script.Id, flagged, _flagNote);
+        _flagNote = "";
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_view is null) {
+            return;
+        }
+        await StopAsync();
+        await Listening.DeleteAsync(_view.Script.Id);
+        Nav.NavigateTo("/listening");
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _ = StopOnLeaveAsync();
+    }
+
+    private async Task StopOnLeaveAsync()
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.listening.stop");
+        } catch {
+            // The page or circuit is already gone.
+        }
+    }
+}

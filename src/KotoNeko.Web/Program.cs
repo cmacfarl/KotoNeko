@@ -57,6 +57,7 @@ builder.Services.AddScoped<GrammarService>();
 builder.Services.AddScoped<GrammarPointService>();
 builder.Services.AddScoped<GrammarReviewService>();
 builder.Services.AddScoped<WhyService>();
+builder.Services.AddScoped<ListeningService>();
 builder.Services.AddScoped<AccountingService>();
 builder.Services.AddScoped<GradingTestService>();
 
@@ -83,7 +84,7 @@ builder.Services.AddSingleton(sp => new BackupService(
     sp.GetRequiredService<ILogger<BackupService>>()));
 
 string ttsApiKey = builder.Configuration["GoogleTtsApiKey"] ?? string.Empty;
-builder.Services.AddSingleton<JapaneseTtsService>(_ => new JapaneseTtsService(ttsApiKey));
+builder.Services.AddSingleton<JapaneseTtsService>(_ => new JapaneseTtsService(ttsApiKey, endpoint: builder.Configuration["Tts:Endpoint"]));
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -183,6 +184,11 @@ app.MapGet("/api/vocab/{id:int}/audio/sentence", async (int id, IDbContextFactor
 
 app.MapGet("/api/practice-sentence/{id:int}/audio", async (int id, PracticeSentenceService sentences) =>
     await sentences.GetAudioAsync(id) is { Length: > 0 } bytes
+        ? Results.File(bytes, "audio/mpeg")
+        : Results.NotFound());
+
+app.MapGet("/api/listening-line/{id:int}/audio", async (int id, ListeningService listening) =>
+    await listening.GetLineAudioAsync(id) is { Length: > 0 } bytes
         ? Results.File(bytes, "audio/mpeg")
         : Results.NotFound());
 

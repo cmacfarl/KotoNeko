@@ -4,6 +4,7 @@
 @inject DictionaryImportService ImportService
 @inject BackupService Backups
 @inject KotoNeko.Llm.LlmService Llm
+@inject ListeningService Listening
 @using KotoNeko.Core.Llm
 @using KotoNeko.Llm
 @implements IDisposable
@@ -50,6 +51,10 @@ else
                 <label>Dictation sentences per day (0 pauses dictation)</label>
                 <input class="kn-input" type="number" min="0" max="200" @bind="_settings.DailyDictationCap" />
             </div>
+            <div class="kn-form-row">
+                <label>Extensive listening minutes per day (a soft cap: replays are always allowed)</label>
+                <input class="kn-input" type="number" min="0" max="240" @bind="_settings.DailyListeningMinutes" />
+            </div>
         </div>
     </div>
 
@@ -67,6 +72,17 @@ else
                 Listening misses count toward the SRS stage
             </label>
             <p class="kn-hint">Off: listening misses are logged for your stats but never drop an item, like conjugation.</p>
+        </div>
+        <div class="kn-form-row">
+            <label>Extensive listening scripts are written by</label>
+            <select class="kn-select" @bind="_settings.ListeningScriptModel">
+                <option value="">The Generate job (@(Llm.Route(KotoNeko.Core.Llm.LlmJob.Generate) is { } generate ? $"{generate.Provider} · {generate.Model}" : "not set"))</option>
+                @foreach (KotoNeko.Core.Llm.ModelChoice choice in Listening.ScriptModels())
+                {
+                    <option value="@choice.Key">@choice.Provider · @choice.Model</option>
+                }
+            </select>
+            <p class="kn-hint">Each script records who wrote it, so you can compare; the Accounting page shows what each costs.</p>
         </div>
 
         <h2>Speech generation speed</h2>

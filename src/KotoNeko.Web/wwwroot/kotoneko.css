@@ -1229,3 +1229,11 @@ kbd {
 .kn-why { margin: 0.4rem 0 1rem; }
 .kn-why-q { font-weight: 600; margin-top: 0.5rem; }
 .kn-why-a { margin: 0.2rem 0 0.4rem; line-height: 1.5; }
+
+/* Extensive listening: transcript lines, speakers, revealed English. */
+.kn-listening-line { padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--kn-border); }
+.kn-listening-line-on { background: rgba(0, 0, 0, 0.04); }
+.kn-listening-speaker { display: inline-block; min-width: 1.4rem; font-weight: 600; color: var(--kn-muted); }
+.kn-listening-text { font-size: 1.2rem; margin-left: 0.3rem; }
+.kn-listening-english { color: var(--kn-muted); margin: 0.2rem 0 0 1.7rem; }
+.kn-listening-reveal { margin-left: 0.5rem; }
