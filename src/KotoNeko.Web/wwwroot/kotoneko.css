@@ -108,6 +108,8 @@ h1, h2, h3 {
 .kn-nav-menu { position: relative; }
 .kn-nav-menu > summary { list-style: none; cursor: pointer; user-select: none; }
 .kn-nav-menu > summary::-webkit-details-marker { display: none; }
+/* On a page inside the menu, Manage is marked lightly; the page's own item inside is the solid one. */
+.kn-nav-menu > summary.active { background: #f0f0f0; color: var(--kn-vocab); }
 .kn-nav-menu-items {
     position: absolute;
     right: 0;

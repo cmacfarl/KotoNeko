@@ -771,4 +771,18 @@ window.kotoneko = window.kotoneko || {};
             }
         }
     };
+
+    // The Manage menu is a <details>, which only closes on its own summary: close it
+    // on a click anywhere outside it, or on Escape.
+    function closeMenus(except) {
+        document.querySelectorAll("details.kn-nav-menu[open]").forEach(function (menu) {
+            if (!except || !menu.contains(except)) {
+                menu.removeAttribute("open");
+            }
+        });
+    }
+    document.addEventListener("click", function (e) { closeMenus(e.target); });
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeMenus(null);
+    });
 })(window.kotoneko);
