@@ -35,7 +35,7 @@ public class DictationAttempt
 {
     public long Id { get; set; }
 
-    /// <summary>The vocabulary item whose sentence was dictated.</summary>
+    /// <summary>The study item whose sentence was dictated: a vocabulary word, or a grammar point.</summary>
     public int StudyItemId { get; set; }
     public StudyItem? StudyItem { get; set; }
 
@@ -52,6 +52,10 @@ public class DictationAttempt
 
     /// <summary>Only the target word was dictated, not the whole sentence.</summary>
     public bool Partial { get; set; }
+
+    /// <summary>The grammar example dictated (Phase 6b); null for a word's sentence (or one since deleted).</summary>
+    public int? GrammarExampleId { get; set; }
+    public GrammarExample? GrammarExample { get; set; }
 
     /// <summary>Share of the kana heard correctly, 0–1.</summary>
     public double Score { get; set; }

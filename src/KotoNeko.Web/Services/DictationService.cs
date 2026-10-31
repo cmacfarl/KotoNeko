@@ -6,13 +6,29 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KotoNeko.Web.Services;
 
+/// <summary>Where a dictated sentence comes from.</summary>
+public enum DictationSource
+{
+    /// <summary>A vocabulary word's practice or context sentence.</summary>
+    Word,
+
+    /// <summary>A grammar point's example, drafted or written by hand.</summary>
+    GrammarExample,
+
+    /// <summary>A sentence you wrote with a grammar point and passed (a composition).</summary>
+    YourSentence,
+}
+
 /// <summary>One sentence to dictate.</summary>
-/// <param name="TargetStart">Where the item's word is in the sentence (−1 when not found).</param>
+/// <param name="StudyItemId">The vocabulary word, or for a grammar sentence the grammar point.</param>
+/// <param name="Japanese">The word, or the grammar point's pattern.</param>
+/// <param name="TargetStart">Where the item's word is in the sentence (−1 when not found, or none).</param>
 /// <param name="Partial">Only the target word is typed; the rest of the sentence is shown.</param>
-/// <param name="PracticeSentenceId">The practice sentence, or null for the word's context sentence.</param>
+/// <param name="PracticeSentenceId">The practice sentence, or null for the word's context sentence (or a grammar sentence).</param>
 /// <param name="KanaLength">The sentence's spoken length in kana.</param>
+/// <param name="GrammarExampleId">For a grammar sentence, the example it is.</param>
 public sealed record DictationItem(
-    int VocabularyId,
+    int StudyItemId,
     string Japanese,
     string Meaning,
     SentenceView Sentence,
@@ -21,7 +37,9 @@ public sealed record DictationItem(
     bool Partial,
     int? PracticeSentenceId,
     string AudioUrl,
-    int KanaLength);
+    int KanaLength,
+    DictationSource Source = DictationSource.Word,
+    int? GrammarExampleId = null);
 
 /// <summary>Today's dictation cap and what is available.</summary>
 /// <param name="LevelKana">The length ladder's current rung: the longest sentence dictated in full.</param>
@@ -43,6 +61,9 @@ public sealed record DictationCheck(
 /// each word's context sentence as a fallback. A sentence is dictated in full when
 /// every other word in it is known and it fits the length ladder
 /// (<see cref="DictationLadder"/>); otherwise only its target word is typed.
+/// Up to a third of a session (Dictation II, Phase 6b) is grammar sentences: the
+/// approved examples of learned grammar points, your own compositions first, always
+/// in full and within the ladder, voiced when picked if they have no audio yet.
 /// Practice only: results are logged and steer what comes up, but never touch the
 /// SRS. Answers are checked by sound against the sentence's stored readings.
 /// </summary>
@@ -53,12 +74,16 @@ public class DictationService
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
     private readonly SentenceReadingService _readings;
     private readonly PracticeSentenceService _sentences;
+    private readonly GrammarPointService _grammar;
 
-    public DictationService(IDbContextFactory<KotoNekoDbContext> factory, SentenceReadingService readings, PracticeSentenceService sentences)
+    public DictationService(
+        IDbContextFactory<KotoNekoDbContext> factory, SentenceReadingService readings, PracticeSentenceService sentences,
+        GrammarPointService grammar)
     {
         _factory = factory;
         _readings = readings;
         _sentences = sentences;
+        _grammar = grammar;
     }
 
     public async Task<DictationAllowance> GetAllowanceAsync(DateTime now)
@@ -67,7 +92,7 @@ public class DictationService
         StudySettings settings = await SettingsService.LoadAsync(db);
         DateTime dayStart = SettingsService.StartOfLocalDay(now);
         int done = await db.DictationAttempts.CountAsync(a => a.PracticedAt >= dayStart);
-        int available = await Candidates(db).CountAsync();
+        int available = await Candidates(db).CountAsync() + await GrammarCandidates(db).CountAsync();
         bool hasDictionary = await db.DictionaryImports.AnyAsync();
         return new DictationAllowance(settings.DailyDictationCap, done, available, hasDictionary, await LevelAsync(db));
     }
@@ -84,12 +109,99 @@ public class DictationService
     }
 
     /// <summary>
-    /// Pick today's sentences, one per word. Words come never-practised first, then
+    /// Pick today's sentences: up to a third grammar sentences
+    /// (<see cref="GrammarSentencesAsync"/>), the rest words' sentences
+    /// (<see cref="WordSentencesAsync"/>), each side filling in when the other runs
+    /// short, with the grammar sentences spread through the session.
+    /// </summary>
+    public async Task<List<DictationItem>> BuildSessionAsync(DateTime now, int count)
+    {
+        if (count <= 0) {
+            return new List<DictationItem>();
+        }
+        int level;
+        await using (KotoNekoDbContext db = await _factory.CreateDbContextAsync()) {
+            level = await LevelAsync(db);
+        }
+        List<DictationItem> grammar = await GrammarSentencesAsync(level, count);
+        int grammarWanted = Math.Min(grammar.Count, DictationMix.GrammarShare(count));
+        List<DictationItem> words = await WordSentencesAsync(now, count - grammarWanted);
+        int grammarUsed = Math.Min(grammar.Count, count - words.Count);
+        return DictationMix.Spread(words, grammar.Take(grammarUsed).ToList());
+    }
+
+    /// <summary>
+    /// Grammar sentences: approved examples of learned, awake grammar points, your own
+    /// first (compositions, then ones written by hand), then never dictated, lowest
+    /// last score and longest ago. Always dictated in full and within the ladder; a
+    /// drafted example also has to use only words you know (your own needn't: you
+    /// wrote them). Ones with no audio are voiced as they're picked; any that can't
+    /// be are skipped.
+    /// </summary>
+    private async Task<List<DictationItem>> GrammarSentencesAsync(int level, int count)
+    {
+        var examples = new List<(int Id, string Text, GrammarExampleSource Source, bool HasAudio, int PointId, string Pattern, string Meaning)>();
+        Dictionary<int, (double Score, DateTime At)> last;
+        Func<string, bool> isKnown;
+        await using (KotoNekoDbContext db = await _factory.CreateDbContextAsync()) {
+            examples = (await GrammarCandidates(db)
+                    .Select(x => new { x.Id, x.Text, x.Source, x.HasAudio, x.GrammarPointId, x.GrammarPoint!.Entry!.Pattern, x.GrammarPoint.Entry.Meaning })
+                    .ToListAsync())
+                .Select(x => (x.Id, x.Text, x.Source, x.HasAudio, x.GrammarPointId, x.Pattern, x.Meaning))
+                .ToList();
+            last = (await db.DictationAttempts.AsNoTracking()
+                    .Where(a => a.GrammarExampleId != null)
+                    .Select(a => new { a.GrammarExampleId, a.Score, a.PracticedAt })
+                    .ToListAsync())
+                .GroupBy(a => a.GrammarExampleId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(a => a.PracticedAt).Select(a => (a.Score, a.PracticedAt)).First());
+            isKnown = await PracticeSentenceService.PoolAsync(db);
+        }
+        if (examples.Count == 0) {
+            return new List<DictationItem>();
+        }
+
+        List<string> texts = examples.Select(x => x.Text).Distinct().ToList();
+        await _readings.EnsureAsync(texts);
+        Dictionary<string, SentenceView> views = await _readings.GetManyAsync(texts);
+
+        Random random = new();
+        List<DictationItem> items = new();
+        foreach (var x in examples
+                     .OrderBy(x => DictationMix.SourceOrder(x.Source))
+                     .ThenBy(x => last.ContainsKey(x.Id) ? 1 : 0)
+                     .ThenBy(x => last.TryGetValue(x.Id, out var a) ? Math.Round(a.Score, 1) : 0)
+                     .ThenBy(x => last.TryGetValue(x.Id, out var a) ? a.At : DateTime.MinValue)
+                     .ThenBy(_ => random.Next())) {
+            if (items.Count >= count) {
+                break;
+            }
+            if (!views.TryGetValue(x.Text, out SentenceView? view)) {
+                continue;
+            }
+            SentenceCheckResult check = PracticeSentenceService.Check(view, string.Empty, isKnown);
+            bool own = x.Source != GrammarExampleSource.Generated;
+            if (check.KanaLength == 0 || check.KanaLength > level || (!own && !check.Comprehensible)) {
+                continue;
+            }
+            if (!x.HasAudio && (await _grammar.GenerateExampleAudioAsync(x.Id) is not null)) {
+                // Couldn't be voiced (no TTS key, or a failure): skip it this time.
+                continue;
+            }
+            items.Add(new DictationItem(x.PointId, x.Pattern, x.Meaning, view, -1, 0, Partial: false, null,
+                $"/api/grammar-example/{x.Id}/audio", check.KanaLength,
+                x.Source == GrammarExampleSource.Composition ? DictationSource.YourSentence : DictationSource.GrammarExample, x.Id));
+        }
+        return items;
+    }
+
+    /// <summary>
+    /// Words' sentences, one per word. Words come never-practised first, then
     /// by lowest last score, then weakest by ear, then longest unpractised. For
     /// each word: the longest practice sentence it can dictate in full, else its
     /// context sentence in full, else a sentence where only the word is typed.
     /// </summary>
-    public async Task<List<DictationItem>> BuildSessionAsync(DateTime now, int count)
+    private async Task<List<DictationItem>> WordSentencesAsync(DateTime now, int count)
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
         var candidates = await Candidates(db)
@@ -212,8 +324,9 @@ public class DictationService
     {
         await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
         db.DictationAttempts.Add(new DictationAttempt {
-            StudyItemId = item.VocabularyId,
+            StudyItemId = item.StudyItemId,
             PracticeSentenceId = item.PracticeSentenceId,
+            GrammarExampleId = item.GrammarExampleId,
             KanaLength = item.KanaLength,
             Sentence = item.Sentence.Text,
             Typed = typed.Length > SentenceReading.MaxTextLength ? typed[..SentenceReading.MaxTextLength] : typed,
@@ -235,6 +348,13 @@ public class DictationService
             && ((v.HasSentenceAudio && v.ContextSentence != null && v.ContextSentence != "")
                 || db.PracticeSentences.Any(s => s.VocabularyId == v.Id && s.HasAudio
                     && (s.Status == PracticeSentenceStatus.Approved || s.Status == PracticeSentenceStatus.NativeChecked))));
+
+    /// <summary>Approved examples of learned, awake grammar points whose list entry isn't pruned.</summary>
+    private static IQueryable<GrammarExample> GrammarCandidates(KotoNekoDbContext db) =>
+        db.GrammarExamples.AsNoTracking().Where(x =>
+            x.Status == GrammarContentStatus.Approved
+            && x.GrammarPoint!.Srs != null && x.GrammarPoint.Srs.Stage != SrsStage.Locked
+            && !x.GrammarPoint.IsAsleep && !x.GrammarPoint.Entry!.IsPruned);
 
     /// <summary>The pieces covering characters [start, end) of the text.</summary>
     public static IReadOnlyList<FuriganaPiece> Slice(IReadOnlyList<FuriganaPiece> pieces, int start, int end)

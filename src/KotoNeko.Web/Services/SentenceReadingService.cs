@@ -218,6 +218,9 @@ public sealed class SentenceReadingService
                     .Select(v => v.ContextSentence!)
                     .ToListAsync();
                 sentences.AddRange(await db.PracticeSentences.AsNoTracking().Select(s => s.Text).ToListAsync());
+                // Grammar examples (lessons, dictation) and listening lines are read too.
+                sentences.AddRange(await db.GrammarExamples.AsNoTracking().Select(x => x.Text).ToListAsync());
+                sentences.AddRange(await db.ListeningLines.AsNoTracking().Select(l => l.Text).ToListAsync());
                 sentences = sentences.Distinct().ToList();
 
                 // Readings for sentences no item uses any more are dead weight.

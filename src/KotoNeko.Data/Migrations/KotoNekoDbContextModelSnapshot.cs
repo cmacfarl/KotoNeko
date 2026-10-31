@@ -86,6 +86,9 @@ namespace KotoNeko.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<int?>("GrammarExampleId")
+                        .HasColumnType("int");
+
                     b.Property<int>("KanaLength")
                         .HasColumnType("int");
 
@@ -115,6 +118,8 @@ namespace KotoNeko.Data.Migrations
                         .HasColumnType("varchar(1000)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("GrammarExampleId");
 
                     b.HasIndex("PracticeSentenceId");
 
@@ -1448,6 +1453,11 @@ namespace KotoNeko.Data.Migrations
 
             modelBuilder.Entity("KotoNeko.Core.Domain.DictationAttempt", b =>
                 {
+                    b.HasOne("KotoNeko.Core.Domain.GrammarExample", "GrammarExample")
+                        .WithMany()
+                        .HasForeignKey("GrammarExampleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("KotoNeko.Core.Domain.PracticeSentence", "PracticeSentence")
                         .WithMany()
                         .HasForeignKey("PracticeSentenceId")
@@ -1458,6 +1468,8 @@ namespace KotoNeko.Data.Migrations
                         .HasForeignKey("StudyItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("GrammarExample");
 
                     b.Navigation("PracticeSentence");
 

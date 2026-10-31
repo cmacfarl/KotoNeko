@@ -207,6 +207,10 @@ public class KotoNekoDbContext : DbContext
                 .HasForeignKey(e => e.StudyItemId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.PracticedAt);
+            entity.HasOne(e => e.GrammarExample)
+                .WithMany()
+                .HasForeignKey(e => e.GrammarExampleId)
+                .OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(e => e.PracticeSentence)
                 .WithMany()
                 .HasForeignKey(e => e.PracticeSentenceId)

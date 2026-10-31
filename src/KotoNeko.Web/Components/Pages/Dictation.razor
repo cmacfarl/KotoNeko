@@ -26,7 +26,8 @@ else if (_items.Count == 0)
         {
             <h1>No sentences to dictate yet</h1>
             <p>Dictation uses the practice sentences of words you've learned (or their context sentence),
-               once the sentence has audio. Add one on a word's edit page.</p>
+               once the sentence has audio, and the approved example sentences of grammar points you've learned,
+               your own first. Add a sentence on a word's edit page.</p>
             <a class="kn-btn kn-btn-primary" href="/vocab">Vocabulary</a>
         }
         else if (_allowance.LeftToday == 0)
@@ -174,9 +175,20 @@ else
                 }
 
                 <p>
-                    <span class="kn-hint">Word:</span>
-                    <span class="kn-jp">@item.Japanese</span> · @item.Meaning
-                    · <a href="/vocab/@item.VocabularyId">Wrong reading above? Fix it</a>
+                    @if (item.Source == DictationSource.Word)
+                    {
+                        <span class="kn-hint">Word:</span>
+                        <span class="kn-jp">@item.Japanese</span>
+                        <span>· @item.Meaning ·</span>
+                        <a href="/vocab/@item.StudyItemId">Wrong reading above? Fix it</a>
+                    }
+                    else
+                    {
+                        <span class="kn-hint">@(item.Source == DictationSource.YourSentence ? "Your sentence with" : "An example of"):</span>
+                        <span class="kn-jp">@item.Japanese</span>
+                        <span>· @item.Meaning ·</span>
+                        <a href="/grammar/point/@item.StudyItemId">See the grammar point</a>
+                    }
                 </p>
                 <p class="kn-hint">Press Enter for the next sentence.</p>
             </div>
