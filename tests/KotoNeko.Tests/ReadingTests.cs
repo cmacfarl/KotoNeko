@@ -126,6 +126,18 @@ public class SentenceReaderTests
         Assert.Equal(expected, await Furiganas(text));
     }
 
+    [Theory]
+    [InlineData("新聞を読んじゃった", "新聞[しんぶん]を読[よ]んじゃった", "読む")]
+    [InlineData("新聞を読んどく", "新聞[しんぶん]を読[よ]んどく", "読む")]
+    [InlineData("新聞を読んでる", "新聞[しんぶん]を読[よ]んでる", "読む")]
+    [InlineData("コーヒーを飲まなきゃ", "コーヒーを飲[の]まなきゃ", "飲む")]
+    public async Task Casual_Contractions_Read_As_Their_Verb(string text, string expected, string lemma)
+    {
+        Assert.Equal(expected, await Furiganas(text));
+        SentenceReader reader = new(new Lookup(Words));
+        Assert.Contains(lemma, (await reader.ReadAsync(text)).Select(w => w.Lemma));
+    }
+
     [Fact]
     public async Task Unknown_Kanji_Get_No_Reading()
     {

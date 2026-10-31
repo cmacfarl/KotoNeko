@@ -210,6 +210,10 @@
   {"key": "n4-tte", "level": "N4", "pattern": "〜って", "meaning": "quoting or topic (casual)"},
   {"key": "n4-wa-ga", "level": "N4", "pattern": "AはBが〜", "meaning": "A has B that … (象は鼻が長い)"},
   {"key": "n4-zurai", "level": "N4", "pattern": "〜づらい", "meaning": "hard to (unpleasant)"},
+  {"key": "n4-teru", "level": "N4", "pattern": "〜てる／〜でる", "meaning": "is doing; is in a state (casual 〜ている)"},
+  {"key": "n4-chau", "level": "N4", "pattern": "〜ちゃう／〜じゃう", "meaning": "end up doing; do completely (casual 〜てしまう)"},
+  {"key": "n4-nakya", "level": "N4", "pattern": "〜なきゃ／〜なくちゃ", "meaning": "must, have to (casual 〜なければ／〜なくては)"},
+  {"key": "n4-toku", "level": "N4", "pattern": "〜とく／〜どく", "meaning": "do in advance (casual 〜ておく)"},
 
   {"key": "n4-tame-ni", "level": "N3", "pattern": "〜ために (purpose)", "meaning": "in order to"},
   {"key": "n4-ni-yoru-to", "level": "N3", "pattern": "〜によると", "meaning": "according to"},

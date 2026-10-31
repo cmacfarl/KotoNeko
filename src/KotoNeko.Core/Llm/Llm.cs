@@ -62,6 +62,9 @@ public enum LlmFeature
 
     /// <summary>Grading an answer to a listening script's comprehension question.</summary>
     ListeningComprehension = 11,
+
+    /// <summary>Writing casual-speech versions of sentences for dictation.</summary>
+    CasualRewrite = 12,
 }
 
 /// <summary>How an LLM call ended, for the call log.</summary>

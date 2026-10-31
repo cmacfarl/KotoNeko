@@ -1,0 +1,191 @@
+@page "/casual"
+@implements IDisposable
+@using KotoNeko.Core.Llm
+@inject CasualService Casual
+@inject IJSRuntime JS
+
+<PageTitle>Casual speech · KotoNeko</PageTitle>
+
+<h1>Casual speech</h1>
+<p class="kn-hint">
+    Casual versions of your sentences, the way friends would say them (plain forms, 〜てる, 〜ちゃう, 〜なきゃ, 〜とく…),
+    for dictation. A model writes them; you approve each one, which voices it. Up to a fifth of each dictation session uses them.
+</p>
+
+<div class="kn-panel">
+    <h2>Write casual versions</h2>
+    @if (_writer is null)
+    {
+        <div class="kn-msg kn-msg-err">No model is set up to write: choose one in <a href="/settings">Settings</a>, or set Llm:Jobs:Generate.</div>
+    }
+    else
+    {
+        <p class="kn-hint">
+            @(_waiting == 1 ? "1 sentence would change in casual speech and has" : $"{_waiting} sentences would change in casual speech and have") no casual version yet.
+            Each batch rewrites up to @CasualRewrite.BatchSize, with @_writer.Provider · @_writer.Model (the listening-material model in <a href="/settings">Settings</a>).
+        </p>
+        <button class="kn-btn kn-btn-primary" disabled="@_busy" @onclick="WriteAsync">@(_busy ? "Writing…" : $"Write up to {CasualRewrite.BatchSize}")</button>
+        @if (_status is not null)
+        {
+            <p class="kn-hint">@_status</p>
+        }
+    }
+    @if (_message is not null)
+    {
+        <div class="kn-msg @(_messageIsError ? "kn-msg-err" : "")">@_message</div>
+    }
+</div>
+
+<div class="kn-panel">
+    <h2>To check (@_drafts.Count)</h2>
+    @if (_drafts.Count == 0)
+    {
+        <p class="kn-empty">Nothing waiting.</p>
+    }
+    @foreach (CasualView d in _drafts)
+    {
+        <div class="kn-grammar-row">
+            <div class="kn-hint">
+                @(d.Source is null ? "Its sentence is no longer in use." : $"{d.Source.Label} · {d.Source.LabelMeaning}")
+                @if (d.Stale)
+                {
+                    <span class="kn-pill kn-pill-donotuse">the sentence has changed since</span>
+                }
+            </div>
+            <div class="kn-jp">@d.Version.Original</div>
+            @if (d.Source is not null && d.Source.English.Length > 0)
+            {
+                <div class="kn-hint">@d.Source.English</div>
+            }
+            <input class="kn-input kn-jp" style="font-size:1.15rem;margin-top:0.3rem" value="@Edited(d)"
+                   @onchange="e => _edits[d.Version.Id] = e.Value?.ToString() ?? string.Empty" />
+            <div class="kn-toolbar">
+                <button class="kn-btn kn-btn-sm kn-btn-primary" disabled="@_busy" @onclick="() => ApproveAsync(d)">Approve</button>
+                <button class="kn-btn kn-btn-sm" disabled="@_busy" @onclick="() => SetAsync(d, CasualVersionStatus.Rejected)">Reject</button>
+                <span class="kn-hint">@d.Version.Writer</span>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="kn-panel">
+    <h2>In use (@_approved.Count)</h2>
+    @if (_approved.Count == 0)
+    {
+        <p class="kn-empty">None approved yet.</p>
+    }
+    @foreach (CasualView a in _approved)
+    {
+        <div class="kn-grammar-row">
+            <div>
+                @if (a.Version.HasAudio)
+                {
+                    <button class="kn-btn kn-btn-sm" @onclick="() => PlayAsync(a)">▶</button>
+                }
+                <span class="kn-jp">@a.Version.Text</span>
+                @if (a.Stale || a.Source is null)
+                {
+                    <span class="kn-pill kn-pill-donotuse">@(a.Source is null ? "sentence no longer in use" : "the sentence has changed since")</span>
+                }
+                else if (!a.Version.HasAudio)
+                {
+                    <span class="kn-pill">no audio</span>
+                }
+            </div>
+            <div class="kn-hint">from <span class="kn-jp">@a.Version.Original</span></div>
+            <div class="kn-toolbar">
+                <button class="kn-btn kn-btn-sm" disabled="@_busy" @onclick="() => SetAsync(a, CasualVersionStatus.Draft)">Back to check</button>
+                <button class="kn-btn kn-btn-sm" disabled="@_busy" @onclick="() => SetAsync(a, CasualVersionStatus.Rejected)">Remove</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ModelChoice? _writer;
+    private List<CasualView> _drafts = new();
+    private List<CasualView> _approved = new();
+    private int _waiting;
+    private readonly Dictionary<int, string> _edits = new();
+    private bool _busy;
+    private string? _status;
+    private string? _message;
+    private bool _messageIsError;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _writer = await Casual.WriterAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        (_drafts, _approved, _waiting) = await Casual.ListAsync();
+    }
+
+    private string Edited(CasualView d) => _edits.TryGetValue(d.Version.Id, out string? text) ? text : d.Version.Text;
+
+    private async Task WriteAsync()
+    {
+        _busy = true;
+        _message = null;
+        try {
+            int written = await Casual.WriteAsync(async status => {
+                _status = status;
+                await InvokeAsync(StateHasChanged);
+            }, _cts.Token);
+            _message = written == 0 ? "Nothing new to rewrite." : $"{written} casual version{(written == 1 ? "" : "s")} to check below.";
+            _messageIsError = false;
+            await LoadAsync();
+        } catch (LlmException ex) {
+            _message = $"Couldn't write casual versions: {ex.Message}";
+            _messageIsError = true;
+        } catch (OperationCanceledException) {
+            return;
+        } finally {
+            _busy = false;
+            _status = null;
+        }
+    }
+
+    private async Task ApproveAsync(CasualView d)
+    {
+        _busy = true;
+        try {
+            string? note = await Casual.ApproveAsync(d.Version.Id, Edited(d));
+            _message = note;
+            _messageIsError = note is not null;
+            _edits.Remove(d.Version.Id);
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task SetAsync(CasualView v, CasualVersionStatus status)
+    {
+        _busy = true;
+        try {
+            await Casual.SetStatusAsync(v.Version.Id, status);
+            await LoadAsync();
+        } finally {
+            _busy = false;
+        }
+    }
+
+    private async Task PlayAsync(CasualView a)
+    {
+        try {
+            await JS.InvokeVoidAsync("kotoneko.playAudio", a.AudioUrl);
+        } catch {
+            // Playing is a nicety.
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

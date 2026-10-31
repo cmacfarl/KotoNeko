@@ -57,6 +57,7 @@ public static class LlmAccounting
         LlmFeature.WhyQuestion => "\"Why?\" questions",
         LlmFeature.ListeningScript => "Listening scripts",
         LlmFeature.ListeningComprehension => "Listening comprehension",
+        LlmFeature.CasualRewrite => "Casual versions",
         _ => "Other",
     };
 

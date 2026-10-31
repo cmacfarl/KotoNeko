@@ -58,6 +58,7 @@ builder.Services.AddScoped<GrammarPointService>();
 builder.Services.AddScoped<GrammarReviewService>();
 builder.Services.AddScoped<WhyService>();
 builder.Services.AddScoped<ListeningService>();
+builder.Services.AddScoped<CasualService>();
 builder.Services.AddScoped<AccountingService>();
 builder.Services.AddScoped<GradingTestService>();
 
@@ -184,6 +185,11 @@ app.MapGet("/api/vocab/{id:int}/audio/sentence", async (int id, IDbContextFactor
 
 app.MapGet("/api/practice-sentence/{id:int}/audio", async (int id, PracticeSentenceService sentences) =>
     await sentences.GetAudioAsync(id) is { Length: > 0 } bytes
+        ? Results.File(bytes, "audio/mpeg")
+        : Results.NotFound());
+
+app.MapGet("/api/casual/{id:int}/audio", async (int id, CasualService casual) =>
+    await casual.GetAudioAsync(id) is { Length: > 0 } bytes
         ? Results.File(bytes, "audio/mpeg")
         : Results.NotFound());
 

@@ -17,6 +17,9 @@ public enum DictationSource
 
     /// <summary>A sentence you wrote with a grammar point and passed (a composition).</summary>
     YourSentence,
+
+    /// <summary>A casual-speech version of one of your sentences (Phase 6c).</summary>
+    Casual,
 }
 
 /// <summary>One sentence to dictate.</summary>
@@ -27,6 +30,9 @@ public enum DictationSource
 /// <param name="PracticeSentenceId">The practice sentence, or null for the word's context sentence (or a grammar sentence).</param>
 /// <param name="KanaLength">The sentence's spoken length in kana.</param>
 /// <param name="GrammarExampleId">For a grammar sentence, the example it is.</param>
+/// <param name="CasualVersionId">For a casual version, the version it is.</param>
+/// <param name="Original">For a casual version, the standard sentence it's a version of.</param>
+/// <param name="DetailUrl">For a casual version, the page of the word or grammar point it belongs to.</param>
 public sealed record DictationItem(
     int StudyItemId,
     string Japanese,
@@ -39,7 +45,10 @@ public sealed record DictationItem(
     string AudioUrl,
     int KanaLength,
     DictationSource Source = DictationSource.Word,
-    int? GrammarExampleId = null);
+    int? GrammarExampleId = null,
+    int? CasualVersionId = null,
+    string? Original = null,
+    string? DetailUrl = null);
 
 /// <summary>Today's dictation cap and what is available.</summary>
 /// <param name="LevelKana">The length ladder's current rung: the longest sentence dictated in full.</param>
@@ -63,7 +72,8 @@ public sealed record DictationCheck(
 /// (<see cref="DictationLadder"/>); otherwise only its target word is typed.
 /// Up to a third of a session (Dictation II, Phase 6b) is grammar sentences: the
 /// approved examples of learned grammar points, your own compositions first, always
-/// in full and within the ladder, voiced when picked if they have no audio yet.
+/// in full and within the ladder, voiced when picked if they have no audio yet. Up to
+/// a fifth (Phase 6c) is approved casual versions of those sentences, in full.
 /// Practice only: results are logged and steer what comes up, but never touch the
 /// SRS. Answers are checked by sound against the sentence's stored readings.
 /// </summary>
@@ -92,7 +102,8 @@ public class DictationService
         StudySettings settings = await SettingsService.LoadAsync(db);
         DateTime dayStart = SettingsService.StartOfLocalDay(now);
         int done = await db.DictationAttempts.CountAsync(a => a.PracticedAt >= dayStart);
-        int available = await Candidates(db).CountAsync() + await GrammarCandidates(db).CountAsync();
+        int available = await Candidates(db).CountAsync() + await GrammarCandidates(db).CountAsync()
+            + (await CasualService.UsableAsync(db)).Count;
         bool hasDictionary = await db.DictionaryImports.AnyAsync();
         return new DictationAllowance(settings.DailyDictationCap, done, available, hasDictionary, await LevelAsync(db));
     }
@@ -110,9 +121,10 @@ public class DictationService
 
     /// <summary>
     /// Pick today's sentences: up to a third grammar sentences
-    /// (<see cref="GrammarSentencesAsync"/>), the rest words' sentences
-    /// (<see cref="WordSentencesAsync"/>), each side filling in when the other runs
-    /// short, with the grammar sentences spread through the session.
+    /// (<see cref="GrammarSentencesAsync"/>), up to a fifth casual versions
+    /// (<see cref="CasualSentencesAsync"/>), the rest words' sentences
+    /// (<see cref="WordSentencesAsync"/>), each filling in when another runs short,
+    /// with the grammar and casual sentences spread through the session.
     /// </summary>
     public async Task<List<DictationItem>> BuildSessionAsync(DateTime now, int count)
     {
@@ -124,10 +136,66 @@ public class DictationService
             level = await LevelAsync(db);
         }
         List<DictationItem> grammar = await GrammarSentencesAsync(level, count);
+        List<DictationItem> casual = await CasualSentencesAsync(level, count);
         int grammarWanted = Math.Min(grammar.Count, DictationMix.GrammarShare(count));
-        List<DictationItem> words = await WordSentencesAsync(now, count - grammarWanted);
-        int grammarUsed = Math.Min(grammar.Count, count - words.Count);
-        return DictationMix.Spread(words, grammar.Take(grammarUsed).ToList());
+        int casualWanted = Math.Min(casual.Count, DictationMix.CasualShare(count));
+        List<DictationItem> words = await WordSentencesAsync(now, count - grammarWanted - casualWanted);
+        // Short of words: grammar sentences fill in first, then casual versions.
+        int grammarUsed = Math.Min(grammar.Count, count - words.Count - casualWanted);
+        int casualUsed = Math.Min(casual.Count, count - words.Count - grammarUsed);
+        return DictationMix.Spread(DictationMix.Spread(words, grammar.Take(grammarUsed).ToList()), casual.Take(casualUsed).ToList());
+    }
+
+    /// <summary>
+    /// Casual versions: approved and voiced, their sentence still in use and unchanged;
+    /// never dictated first, then lowest last score, then longest ago. Always in full
+    /// and within the ladder. The known-words check was passed by the sentence they
+    /// come from, so it isn't applied again (contracted endings could trip it).
+    /// </summary>
+    private async Task<List<DictationItem>> CasualSentencesAsync(int level, int count)
+    {
+        List<CasualView> usable;
+        Dictionary<int, (double Score, DateTime At)> last;
+        await using (KotoNekoDbContext db = await _factory.CreateDbContextAsync()) {
+            usable = await CasualService.UsableAsync(db);
+            last = (await db.DictationAttempts.AsNoTracking()
+                    .Where(a => a.CasualVersionId != null)
+                    .Select(a => new { a.CasualVersionId, a.Score, a.PracticedAt })
+                    .ToListAsync())
+                .GroupBy(a => a.CasualVersionId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(a => a.PracticedAt).Select(a => (a.Score, a.PracticedAt)).First());
+        }
+        if (usable.Count == 0 || count <= 0) {
+            return new List<DictationItem>();
+        }
+
+        List<string> texts = usable.Select(u => u.Version.Text).Distinct().ToList();
+        await _readings.EnsureAsync(texts);
+        Dictionary<string, SentenceView> views = await _readings.GetManyAsync(texts);
+
+        Random random = new();
+        List<DictationItem> items = new();
+        foreach (CasualView u in usable
+                     .OrderBy(u => last.ContainsKey(u.Version.Id) ? 1 : 0)
+                     .ThenBy(u => last.TryGetValue(u.Version.Id, out var a) ? Math.Round(a.Score, 1) : 0)
+                     .ThenBy(u => last.TryGetValue(u.Version.Id, out var a) ? a.At : DateTime.MinValue)
+                     .ThenBy(_ => random.Next())) {
+            if (items.Count >= count) {
+                break;
+            }
+            if (!views.TryGetValue(u.Version.Text, out SentenceView? view)) {
+                continue;
+            }
+            int kana = SentenceCheck.KanaLength(view.Pieces);
+            if (kana == 0 || kana > level) {
+                continue;
+            }
+            CasualCandidate source = u.Source!;
+            items.Add(new DictationItem(source.StudyItemId, source.Label, source.LabelMeaning, view, -1, 0, Partial: false, null,
+                u.AudioUrl, kana, DictationSource.Casual, CasualVersionId: u.Version.Id, Original: u.Version.Original,
+                DetailUrl: source.GrammarExampleId is null ? $"/vocab/{source.StudyItemId}" : $"/grammar/point/{source.StudyItemId}"));
+        }
+        return items;
     }
 
     /// <summary>
@@ -327,6 +395,7 @@ public class DictationService
             StudyItemId = item.StudyItemId,
             PracticeSentenceId = item.PracticeSentenceId,
             GrammarExampleId = item.GrammarExampleId,
+            CasualVersionId = item.CasualVersionId,
             KanaLength = item.KanaLength,
             Sentence = item.Sentence.Text,
             Typed = typed.Length > SentenceReading.MaxTextLength ? typed[..SentenceReading.MaxTextLength] : typed,

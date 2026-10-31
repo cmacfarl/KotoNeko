@@ -57,6 +57,10 @@ public class DictationAttempt
     public int? GrammarExampleId { get; set; }
     public GrammarExample? GrammarExample { get; set; }
 
+    /// <summary>The casual version dictated (Phase 6c); null otherwise (or one since deleted).</summary>
+    public int? CasualVersionId { get; set; }
+    public CasualVersion? CasualVersion { get; set; }
+
     /// <summary>Share of the kana heard correctly, 0–1.</summary>
     public double Score { get; set; }
 

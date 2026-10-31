@@ -213,6 +213,18 @@ public static class Deinflector
         r.Add(new("ている", "て", V1, Te));
         r.Add(new("てる", "て", V1, Te));
         r.Add(new("でいる", "で", V1, Te));
+        r.Add(new("でる", "で", V1, Te));
+
+        // Casual contractions on a te-form, conjugating as godan verbs themselves:
+        // ちゃう/じゃう for てしまう/でしまう (忘れちゃった), とく/どく for ておく/でおく (読んどいた).
+        r.Add(new("ちゃう", "て", V5, Te));
+        r.Add(new("じゃう", "で", V5, Te));
+        r.Add(new("とく", "て", V5, Te));
+        r.Add(new("どく", "で", V5, Te));
+
+        // なきゃ / なくちゃ for なければ / なくては (行かなきゃ): back to the negative.
+        r.Add(new("なきゃ", "ない", Any, Adj));
+        r.Add(new("なくちゃ", "ない", Any, Adj));
 
         return r.ToArray();
     }

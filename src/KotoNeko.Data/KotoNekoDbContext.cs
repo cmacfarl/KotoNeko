@@ -38,6 +38,8 @@ public class KotoNekoDbContext : DbContext
     public DbSet<ListeningLineAudio> ListeningLineAudios => Set<ListeningLineAudio>();
     public DbSet<ListeningLog> ListeningLogs => Set<ListeningLog>();
     public DbSet<ListeningAnswer> ListeningAnswers => Set<ListeningAnswer>();
+    public DbSet<CasualVersion> CasualVersions => Set<CasualVersion>();
+    public DbSet<CasualVersionAudio> CasualVersionAudios => Set<CasualVersionAudio>();
     public DbSet<GrammarExampleAudio> GrammarExampleAudios => Set<GrammarExampleAudio>();
     public DbSet<LlmCall> LlmCalls => Set<LlmCall>();
     public DbSet<GradingTestItem> GradingTestItems => Set<GradingTestItem>();
@@ -211,6 +213,10 @@ public class KotoNekoDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.GrammarExampleId)
                 .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.CasualVersion)
+                .WithMany()
+                .HasForeignKey(e => e.CasualVersionId)
+                .OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(e => e.PracticeSentence)
                 .WithMany()
                 .HasForeignKey(e => e.PracticeSentenceId)
@@ -370,6 +376,30 @@ public class KotoNekoDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Audio).HasColumnType("longblob").IsRequired();
             entity.HasIndex(e => e.PracticeSentenceId).IsUnique();
+        });
+
+        modelBuilder.Entity<CasualVersion>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Original).HasMaxLength(SentenceReading.MaxTextLength).IsRequired();
+            entity.Property(e => e.Text).HasMaxLength(CasualVersion.MaxTextLength).IsRequired();
+            entity.Property(e => e.Writer).HasMaxLength(ListeningScript.MaxWriterLength).IsRequired();
+            entity.HasOne(e => e.PracticeSentence).WithMany().HasForeignKey(e => e.PracticeSentenceId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.GrammarExample).WithMany().HasForeignKey(e => e.GrammarExampleId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Audio)
+                .WithOne(a => a.CasualVersion)
+                .HasForeignKey<CasualVersionAudio>(a => a.CasualVersionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.PracticeSentenceId).IsUnique();
+            entity.HasIndex(e => e.GrammarExampleId).IsUnique();
+            entity.HasIndex(e => e.Status);
+        });
+
+        modelBuilder.Entity<CasualVersionAudio>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Audio).HasColumnType("longblob").IsRequired();
+            entity.HasIndex(e => e.CasualVersionId).IsUnique();
         });
 
         modelBuilder.Entity<ListeningScript>(entity =>

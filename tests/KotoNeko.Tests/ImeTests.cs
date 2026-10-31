@@ -288,6 +288,32 @@ public class KanaKanjiConverterTests
         Assert.Equal("新聞を", Kana.ToHiragana("新聞ヲ"));
     }
 
+    [Theory]
+    [InlineData("わすれちゃった", "忘れちゃった")]
+    [InlineData("のんじゃった", "飲んじゃった")]
+    [InlineData("たべちゃう", "食べちゃう")]
+    [InlineData("かっとく", "買っとく")]
+    [InlineData("よんどいた", "読んどいた")]
+    [InlineData("かっとかない", "買っとかない")]
+    [InlineData("いかなきゃ", "行かなきゃ")]
+    [InlineData("たべなくちゃ", "食べなくちゃ")]
+    [InlineData("よんでる", "読んでる")]
+    [InlineData("たべてる", "食べてる")]
+    public async Task Casual_Contractions_Convert(string kana, string written)
+    {
+        DictionaryWord[] words = {
+            W("わすれる", "忘れる", WordType.Ichidan),
+            W("のむ", "飲む", WordType.Godan),
+            W("たべる", "食べる", WordType.Ichidan),
+            W("かう", "買う", WordType.Godan),
+            W("よむ", "読む", WordType.Godan),
+            W("いく", "行く", WordType.Godan),
+        };
+        KanaKanjiConverter converter = new(new FakeLookup(words));
+
+        Assert.Contains(written, await converter.CandidatesAsync(kana));
+    }
+
     [Fact]
     public async Task いった_Offers_行った_Among_Its_Many_Verbs()
     {

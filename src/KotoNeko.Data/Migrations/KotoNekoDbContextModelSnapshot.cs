@@ -22,6 +22,80 @@ namespace KotoNeko.Data.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.CasualVersion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("GrammarExampleId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasAudio")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Original")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int?>("PracticeSentenceId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("Writer")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GrammarExampleId")
+                        .IsUnique();
+
+                    b.HasIndex("PracticeSentenceId")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("CasualVersions");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.CasualVersionAudio", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte[]>("Audio")
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
+                    b.Property<int>("CasualVersionId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CasualVersionId")
+                        .IsUnique();
+
+                    b.ToTable("CasualVersionAudios");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.ConjugatedAudio", b =>
                 {
                     b.Property<int>("Id")
@@ -86,6 +160,9 @@ namespace KotoNeko.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<int?>("CasualVersionId")
+                        .HasColumnType("int");
+
                     b.Property<int?>("GrammarExampleId")
                         .HasColumnType("int");
 
@@ -118,6 +195,8 @@ namespace KotoNeko.Data.Migrations
                         .HasColumnType("varchar(1000)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CasualVersionId");
 
                     b.HasIndex("GrammarExampleId");
 
@@ -1429,6 +1508,34 @@ namespace KotoNeko.Data.Migrations
                     b.ToTable("Vocabulary", (string)null);
                 });
 
+            modelBuilder.Entity("KotoNeko.Core.Domain.CasualVersion", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.GrammarExample", "GrammarExample")
+                        .WithMany()
+                        .HasForeignKey("GrammarExampleId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("KotoNeko.Core.Domain.PracticeSentence", "PracticeSentence")
+                        .WithMany()
+                        .HasForeignKey("PracticeSentenceId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("GrammarExample");
+
+                    b.Navigation("PracticeSentence");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.CasualVersionAudio", b =>
+                {
+                    b.HasOne("KotoNeko.Core.Domain.CasualVersion", "CasualVersion")
+                        .WithOne("Audio")
+                        .HasForeignKey("KotoNeko.Core.Domain.CasualVersionAudio", "CasualVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CasualVersion");
+                });
+
             modelBuilder.Entity("KotoNeko.Core.Domain.ConjugatedAudio", b =>
                 {
                     b.HasOne("KotoNeko.Core.Domain.Conjugation", "Conjugation")
@@ -1453,6 +1560,11 @@ namespace KotoNeko.Data.Migrations
 
             modelBuilder.Entity("KotoNeko.Core.Domain.DictationAttempt", b =>
                 {
+                    b.HasOne("KotoNeko.Core.Domain.CasualVersion", "CasualVersion")
+                        .WithMany()
+                        .HasForeignKey("CasualVersionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("KotoNeko.Core.Domain.GrammarExample", "GrammarExample")
                         .WithMany()
                         .HasForeignKey("GrammarExampleId")
@@ -1468,6 +1580,8 @@ namespace KotoNeko.Data.Migrations
                         .HasForeignKey("StudyItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("CasualVersion");
 
                     b.Navigation("GrammarExample");
 
@@ -1670,6 +1784,11 @@ namespace KotoNeko.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("SourceMaterial");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Domain.CasualVersion", b =>
+                {
+                    b.Navigation("Audio");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.Conjugation", b =>

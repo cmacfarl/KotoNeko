@@ -8,6 +8,9 @@ public static class DictationMix
     /// <summary>The grammar sentences wanted in a session of <paramref name="count"/>: up to a third.</summary>
     public static int GrammarShare(int count) => Math.Max(0, count) / 3;
 
+    /// <summary>The casual versions wanted in a session of <paramref name="count"/>: up to a fifth.</summary>
+    public static int CasualShare(int count) => Math.Max(0, count) / 5;
+
     /// <summary>Your own sentences first (compositions, then written by hand), drafted examples last.</summary>
     public static int SourceOrder(GrammarExampleSource source) => source switch {
         GrammarExampleSource.Composition => 0,

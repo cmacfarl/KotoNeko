@@ -175,7 +175,14 @@ else
                 }
 
                 <p>
-                    @if (item.Source == DictationSource.Word)
+                    @if (item.Source == DictationSource.Casual)
+                    {
+                        <span class="kn-hint">Casual version of:</span>
+                        <span class="kn-jp">@item.Original</span>
+                        <span>· @item.Japanese ·</span>
+                        <a href="@item.DetailUrl">See where it's from</a>
+                    }
+                    else if (item.Source == DictationSource.Word)
                     {
                         <span class="kn-hint">Word:</span>
                         <span class="kn-jp">@item.Japanese</span>

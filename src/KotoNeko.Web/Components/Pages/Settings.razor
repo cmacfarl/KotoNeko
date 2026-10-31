@@ -74,7 +74,7 @@ else
             <p class="kn-hint">Off: listening misses are logged for your stats but never drop an item, like conjugation.</p>
         </div>
         <div class="kn-form-row">
-            <label>Extensive listening scripts are written by</label>
+            <label>Listening scripts and casual versions of sentences are written by</label>
             <select class="kn-select" @bind="_settings.ListeningScriptModel">
                 <option value="">The Generate job (@(Llm.Route(KotoNeko.Core.Llm.LlmJob.Generate) is { } generate ? $"{generate.Provider} · {generate.Model}" : "not set"))</option>
                 @foreach (KotoNeko.Core.Llm.ModelChoice choice in Listening.ScriptModels())
