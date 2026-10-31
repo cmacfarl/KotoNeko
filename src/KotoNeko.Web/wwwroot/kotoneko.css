@@ -1239,3 +1239,8 @@ kbd {
 .kn-listening-text { font-size: 1.2rem; margin-left: 0.3rem; }
 .kn-listening-english { color: var(--kn-muted); margin: 0.2rem 0 0 1.7rem; }
 .kn-listening-reveal { margin-left: 0.5rem; }
+
+/* Models page */
+.kn-models td { vertical-align: top; }
+.kn-models td:last-child { width: 55%; }
+.kn-models-warning { margin: 0.4rem 0 0; padding: 0.3rem 0.6rem; font-size: 0.85rem; }

@@ -1259,11 +1259,6 @@ namespace KotoNeko.Data.Migrations
                     b.Property<bool>("ListeningEnabled")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<string>("ListeningScriptModel")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
                     b.Property<int>("SpeechSpeed")
                         .HasColumnType("int");
 
@@ -1284,7 +1279,6 @@ namespace KotoNeko.Data.Migrations
                             LessonBatchSize = 5,
                             ListeningCountsTowardSrs = false,
                             ListeningEnabled = true,
-                            ListeningScriptModel = "",
                             SpeechSpeed = 0
                         });
                 });
@@ -1398,6 +1392,29 @@ namespace KotoNeko.Data.Migrations
                     b.HasIndex("CalledAt");
 
                     b.ToTable("LlmCalls");
+                });
+
+            modelBuilder.Entity("KotoNeko.Core.Llm.ModelAssignment", b =>
+                {
+                    b.Property<int>("Feature")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Feature");
+
+                    b.ToTable("ModelAssignments");
                 });
 
             modelBuilder.Entity("KotoNeko.Core.Domain.GrammarPoint", b =>

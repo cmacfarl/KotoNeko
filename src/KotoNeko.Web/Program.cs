@@ -63,8 +63,9 @@ builder.Services.AddScoped<AccountingService>();
 builder.Services.AddScoped<GradingTestService>();
 
 // LLM providers (KotoNeko.Llm). Keys come from appsettings.Development.json
-// (git-ignored) or the environment, never tracked files; which provider and model
-// each job uses is in appsettings.json (Llm:Jobs). Every call is logged in LlmCalls.
+// (git-ignored) or the environment, never tracked files. Each use case's model is
+// chosen on the Models page, or else is its job's route in appsettings.json (Llm:Jobs).
+// Every call is logged in LlmCalls.
 builder.Services.AddKotoNekoLlm(builder.Configuration);
 builder.Services.AddScoped<SentenceGenerationService>();
 builder.Services.AddScoped<GrammarDraftingService>();
@@ -124,6 +125,9 @@ using (IServiceScope scope = app.Services.CreateScope())
 
         db.Database.Migrate();
         logger.LogInformation("Database is up to date.");
+
+        // The models chosen on the Models page, so pages show who'll answer before any call.
+        await app.Services.GetRequiredService<KotoNeko.Llm.LlmService>().LoadAssignmentsAsync();
     }
     catch (Exception ex)
     {

@@ -16,13 +16,13 @@
     <h2>Write casual versions</h2>
     @if (_writer is null)
     {
-        <div class="kn-msg kn-msg-err">No model is set up to write: choose one in <a href="/settings">Settings</a>, or set Llm:Jobs:Generate.</div>
+        <div class="kn-msg kn-msg-err">No model is set up to write: choose one on the <a href="/models">Models</a> page.</div>
     }
     else
     {
         <p class="kn-hint">
             @(_waiting == 1 ? "1 sentence would change in casual speech and has" : $"{_waiting} sentences would change in casual speech and have") no casual version yet.
-            Each batch rewrites up to @CasualRewrite.BatchSize, with @_writer.Provider · @_writer.Model (the listening-material model in <a href="/settings">Settings</a>).
+            Each batch rewrites up to @CasualRewrite.BatchSize, with @_writer.Provider · @_writer.Model (change it on the <a href="/models">Models</a> page).
         </p>
         <button class="kn-btn kn-btn-primary" disabled="@_busy" @onclick="WriteAsync">@(_busy ? "Writing…" : $"Write up to {CasualRewrite.BatchSize}")</button>
         @if (_status is not null)
@@ -115,7 +115,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _writer = await Casual.WriterAsync();
+        _writer = Casual.Writer();
         await LoadAsync();
     }
 

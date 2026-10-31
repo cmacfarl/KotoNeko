@@ -71,7 +71,7 @@ else
             <CompositionIdeas @key="point.Id" Ideas="point.Situations" ShowHints="_item.Cues.Formation" />
             @if (Reviews.Route is not { IsConfigured: true })
             {
-                <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so reviews can't be checked. Set it up and come back; your points stay due.</div>
+                <div class="kn-msg kn-msg-err">No model is set up for review grading (see the <a href="/models">Models</a> page), so reviews can't be checked. Set it up and come back; your points stay due.</div>
             }
 
             @if (contrast is not null)
@@ -191,7 +191,7 @@ else
             }
 
             @* The review's miss can be disputed until Next, practice rewrites or not. *@
-            @if (_deciding is { Effect: GrammarReviewEffect.Dropped or GrammarReviewEffect.Kept } && Reviews.RecheckRoute is { IsConfigured: true } recheck)
+            @if (_deciding is { Effect: GrammarReviewEffect.Dropped or GrammarReviewEffect.Kept } && Reviews.DisputeRoute is { IsConfigured: true } recheck)
             {
                 <div class="kn-review-dispute">
                     @if (_dispute is { } done)

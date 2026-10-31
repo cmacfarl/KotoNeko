@@ -17,7 +17,7 @@ public sealed class WhyService
     }
 
     /// <summary>Where questions go, or null when no route is configured.</summary>
-    public LlmRoute? Route => _llm.Route(LlmJob.Explain);
+    public LlmRoute? Route => _llm.Route(LlmFeature.WhyQuestion);
 
     /// <summary>The answer. Throws <see cref="LlmException"/> when there's no usable answer.</summary>
     public async Task<string> AskAsync(

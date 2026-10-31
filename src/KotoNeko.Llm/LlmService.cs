@@ -18,12 +18,16 @@ public sealed record LlmResult<T>(T Value, LlmRoute Route, int InputTokens, int 
 /// <summary>A provider and whether it can be called.</summary>
 public sealed record LlmProviderStatus(string Name, bool IsConfigured, string HowToConfigure);
 
+/// <summary>A model that can be chosen on the Models page, and whether its provider is set up.</summary>
+public sealed record ModelOption(ModelChoice Choice, bool IsConfigured);
+
 /// <summary>
-/// Calls an LLM for a job, routed by configuration (Llm:Jobs:{Job}:Provider and
-/// :Model), and returns the answer parsed into <typeparamref name="T"/>. Model IDs
-/// live only in configuration. Every call is logged with its tokens, time and
-/// outcome. Answers are validated: a model's promise to follow the schema isn't
-/// trusted.
+/// Calls an LLM and returns the answer parsed into <typeparamref name="T"/>. A request
+/// goes to the model chosen for its use case on the Models page (stored in the
+/// ModelAssignments table and held here), or, with no choice or one whose provider
+/// isn't set up, to its job's recommended route in configuration (Llm:Jobs:{Job}).
+/// Every call is logged with its tokens, time and outcome. Answers are validated: a
+/// model's promise to follow the schema isn't trusted.
 /// </summary>
 public sealed class LlmService
 {
@@ -34,6 +38,10 @@ public sealed class LlmService
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
     private readonly LlmPricing _pricing;
     private readonly ILogger<LlmService> _logger;
+
+    // The Models page's choices, replaced whole on each change so readers never see half of one.
+    private IReadOnlyDictionary<LlmFeature, ModelChoice> _assignments = new Dictionary<LlmFeature, ModelChoice>();
+    private bool _loaded;
 
     public LlmService(
         IEnumerable<ILlmProvider> providers, IConfiguration configuration,
@@ -46,8 +54,8 @@ public sealed class LlmService
         _logger = logger;
     }
 
-    /// <summary>The configured route for a job, or null when none is set.</summary>
-    public LlmRoute? Route(LlmJob job)
+    /// <summary>A job's route in configuration (the recommended model for its use cases), or null when none is set.</summary>
+    public LlmRoute? RecommendedRoute(LlmJob job)
     {
         string? provider = _configuration[$"Llm:Jobs:{job}:Provider"];
         string? model = _configuration[$"Llm:Jobs:{job}:Model"];
@@ -58,16 +66,110 @@ public sealed class LlmService
         return new LlmRoute(job, p?.Name ?? provider, model, configured);
     }
 
+    /// <summary>
+    /// Where a use case's calls go: the model chosen on the Models page when its provider
+    /// is set up, otherwise the recommended route. Null when neither is set.
+    /// </summary>
+    public LlmRoute? Route(LlmFeature feature) => Route(feature, JobOf(feature));
+
+    private LlmRoute? Route(LlmFeature feature, LlmJob job) =>
+        Assigned(feature) is { } chosen && IsConfigured(chosen.Provider)
+            ? new LlmRoute(job, _providers[chosen.Provider].Name, chosen.Model, true)
+            : RecommendedRoute(job);
+
+    /// <summary>The job whose route is a feature's recommended model.</summary>
+    public static LlmJob JobOf(LlmFeature feature) => ModelUseCases.For(feature)?.Job ?? feature switch {
+        LlmFeature.Prelabelling => LlmJob.Label,
+        LlmFeature.GradingEval => LlmJob.Grade,
+        _ => LlmJob.Generate,
+    };
+
+    /// <summary>The model chosen for a use case, whether or not its provider is set up; null for the recommended one.</summary>
+    public ModelChoice? Assigned(LlmFeature feature) => _assignments.GetValueOrDefault(feature);
+
+    /// <summary>Read the Models page's choices from the database. Called at startup, and before a call if it wasn't.</summary>
+    public async Task LoadAssignmentsAsync(CancellationToken cancellationToken = default)
+    {
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync(cancellationToken);
+        _assignments = (await db.ModelAssignments.AsNoTracking().ToListAsync(cancellationToken))
+            .ToDictionary(a => a.Feature, a => new ModelChoice(a.Provider, a.Model));
+        _loaded = true;
+    }
+
+    private async Task EnsureLoadedAsync(CancellationToken cancellationToken)
+    {
+        if (_loaded) {
+            return;
+        }
+        try {
+            await LoadAssignmentsAsync(cancellationToken);
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            // Without the database the recommended models still work.
+            _logger.LogWarning(ex, "Couldn't read the model choices; using the recommended models.");
+        }
+    }
+
+    /// <summary>
+    /// The models that can be chosen: every priced model a provider here serves (by ID,
+    /// as configuration sorts them), plus any recommended route that isn't priced (a local model).
+    /// </summary>
+    public IReadOnlyList<ModelOption> ModelOptions()
+    {
+        List<ModelChoice> choices = ModelChoices.All(_pricing.Models);
+        foreach (LlmJob job in Enum.GetValues<LlmJob>()) {
+            if (RecommendedRoute(job) is { } route && !choices.Any(c => Same(c, route.Provider, route.Model))) {
+                choices.Add(new ModelChoice(route.Provider, route.Model));
+            }
+        }
+        return choices.Select(c => new ModelOption(c, IsConfigured(c.Provider))).ToList();
+    }
+
+    /// <summary>
+    /// Choose a use case's model, or with null go back to the recommended one. Only a
+    /// listed model whose provider is set up can be chosen.
+    /// </summary>
+    public async Task SetAssignmentAsync(LlmFeature feature, ModelChoice? choice)
+    {
+        if (ModelUseCases.For(feature) is null) {
+            throw new InvalidOperationException($"The model for {feature} can't be chosen.");
+        }
+        if (choice is not null && !ModelOptions().Any(o => o.IsConfigured && Same(o.Choice, choice.Provider, choice.Model))) {
+            throw new InvalidOperationException($"{choice.Provider} · {choice.Model} can't be chosen: it isn't listed, or its provider has no key.");
+        }
+
+        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
+        ModelAssignment? row = await db.ModelAssignments.FindAsync(feature);
+        if (choice is null) {
+            if (row is not null) {
+                db.ModelAssignments.Remove(row);
+            }
+        } else {
+            if (row is null) {
+                row = new ModelAssignment { Feature = feature };
+                db.ModelAssignments.Add(row);
+            }
+            row.Provider = choice.Provider;
+            row.Model = choice.Model;
+            row.ChangedAt = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync();
+        await LoadAssignmentsAsync();
+    }
+
+    private static bool Same(ModelChoice choice, string provider, string model) =>
+        string.Equals(choice.Provider, provider, StringComparison.OrdinalIgnoreCase) && choice.Model == model;
+
     public IReadOnlyList<LlmProviderStatus> Providers() => _providers.Values
         .Select(p => new LlmProviderStatus(p.Name, p.IsConfigured, p.Name switch {
             "Claude" => "Llm:Claude:ApiKey in appsettings.Development.json, or the ANTHROPIC_API_KEY environment variable",
             "Gemini" => "Llm:Gemini:ApiKey in appsettings.Development.json, or the GEMINI_API_KEY environment variable",
+            "OpenAI" => "Llm:OpenAI:ApiKey in appsettings.Development.json, or the OPENAI_API_KEY environment variable",
             _ => "Llm:LmStudio:BaseUrl (LM Studio's server address, e.g. http://localhost:1234/v1)",
         }))
         .ToList();
 
     /// <summary>
-    /// Run a request on its job's route and parse the answer. <paramref name="validate"/>
+    /// Run a request on its use case's route and parse the answer. <paramref name="validate"/>
     /// returns a problem description, or null when the answer is usable. Throws
     /// <see cref="LlmException"/> when there's no usable answer.
     /// </summary>
@@ -77,8 +179,10 @@ public sealed class LlmService
     /// <summary>As <see cref="CallAsync{T}"/>, also returning the route used and the tokens spent.</summary>
     public async Task<LlmResult<T>> CallWithUsageAsync<T>(LlmRequest request, Func<T, string?> validate, CancellationToken cancellationToken = default)
     {
-        LlmRoute route = Route(request.Job)
-            ?? throw new LlmException(LlmOutcome.NotConfigured, $"No provider is set for the {request.Job} job (Llm:Jobs:{request.Job} in appsettings.json).");
+        await EnsureLoadedAsync(cancellationToken);
+        LlmRoute route = Route(request.Feature, request.Job)
+            ?? throw new LlmException(LlmOutcome.NotConfigured,
+                $"No model is set for this: choose one on the Models page, or set Llm:Jobs:{request.Job} in appsettings.json.");
         return await CallOnAsync(route.Provider, route.Model, request, validate, cancellationToken);
     }
 
@@ -87,16 +191,16 @@ public sealed class LlmService
 
     /// <summary>
     /// As <see cref="CallWithUsageAsync{T}"/>, on a named provider and model rather than
-    /// the job's route (pre-labelling asks several models the same question).
+    /// the use case's route (pre-labelling asks several models the same question).
     /// </summary>
     public async Task<LlmResult<T>> CallOnAsync<T>(
         string providerName, string model, LlmRequest request, Func<T, string?> validate, CancellationToken cancellationToken = default)
     {
         if (!_providers.TryGetValue(providerName, out ILlmProvider? provider)) {
-            throw new LlmException(LlmOutcome.NotConfigured, $"Unknown provider {providerName} (Claude, Gemini or LmStudio).");
+            throw new LlmException(LlmOutcome.NotConfigured, $"Unknown provider {providerName} (Claude, Gemini, OpenAI or LmStudio).");
         }
         if (!provider.IsConfigured) {
-            throw new LlmException(LlmOutcome.NotConfigured, $"{provider.Name} isn't configured: set its key or address (see Settings).");
+            throw new LlmException(LlmOutcome.NotConfigured, $"{provider.Name} isn't configured: set its key or address (see the Models page).");
         }
         LlmRoute route = new(request.Job, provider.Name, model, true);
 

@@ -36,8 +36,6 @@ public class SettingsService
         row.LessonBatchSize = Math.Clamp(input.LessonBatchSize, 1, 50);
         row.DailyDictationCap = Math.Clamp(input.DailyDictationCap, 0, 200);
         row.DailyListeningMinutes = Math.Clamp(input.DailyListeningMinutes, 0, 240);
-        string model = (input.ListeningScriptModel ?? "").Trim();
-        row.ListeningScriptModel = model.Length > StudySettings.MaxModelChoiceLength ? "" : model;
         row.ListeningEnabled = input.ListeningEnabled;
         row.ListeningCountsTowardSrs = input.ListeningCountsTowardSrs;
         row.SpeechSpeed = Enum.IsDefined(input.SpeechSpeed) ? input.SpeechSpeed : SpeechSpeed.Slow;

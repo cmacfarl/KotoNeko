@@ -49,7 +49,7 @@ public sealed record DisputeResult(IReadOnlyList<DisputedSentence> Rechecked, bo
 /// <summary>
 /// Grammar reviews (Phase 5): free composition with a point, graded by the Grade job.
 /// A point's first graded answer in a review moves it on the SRS: an unsure miss gets
-/// a second opinion (the Recheck job) first, and only a confident miss drops it. A
+/// a second opinion (the model chosen for second opinions) first, and only a confident miss drops it. A
 /// miss can be disputed once, for a fresh second opinion; if that passes the sentence,
 /// the review counts as a pass. Rewrites after the review is decided are practice.
 /// Every graded sentence is kept, and passing ones go into the point's sentence bank.
@@ -67,8 +67,9 @@ public sealed class GrammarReviewService
         _points = points;
     }
 
-    public LlmRoute? Route => _grading.Route;
-    public LlmRoute? RecheckRoute => _grading.RecheckRoute;
+    public LlmRoute? Route => _grading.Route(LlmFeature.ReviewGrading);
+    public LlmRoute? SecondOpinionRoute => _grading.Route(LlmFeature.SecondOpinion);
+    public LlmRoute? DisputeRoute => _grading.Route(LlmFeature.Dispute);
 
     /// <summary>Learned points due now: not asleep, not burned, their list entry not pruned.</summary>
     private static IQueryable<GrammarPoint> Due(KotoNekoDbContext db, DateTime now) =>
@@ -187,9 +188,9 @@ public sealed class GrammarReviewService
         var seconds = new (GradingVerdict? Verdict, string? Model, string? Problem)[tasks.Count];
         List<int> unsure = Enumerable.Range(0, tasks.Count).Where(i => GrammarReview.NeedsSecondOpinion(graded[i].Value)).ToList();
         if (session.Decided is null && unsure.Count > 0) {
-            if (RecheckRoute is not { IsConfigured: true }) {
+            if (SecondOpinionRoute is not { IsConfigured: true }) {
                 foreach (int i in unsure) {
-                    seconds[i] = (null, null, "No second grader is set up (Llm:Jobs:Recheck), so this unsure miss doesn't count either way.");
+                    seconds[i] = (null, null, "No model is set up for second opinions (see the Models page), so this unsure miss doesn't count either way.");
                 }
             } else {
                 if (onSecondOpinion is not null) {
@@ -265,7 +266,7 @@ public sealed class GrammarReviewService
 
     /// <summary>
     /// Dispute a review's miss: each sentence that missed gets a fresh second opinion
-    /// (the Recheck job), with the learner's comment. If every one passes, the miss is
+    /// (the model chosen for disputes), with the learner's comment. If every one passes, the miss is
     /// overturned and the review counts as a pass. Once per review. Throws
     /// <see cref="LlmException"/> when a second opinion can't be had; nothing changes then.
     /// </summary>

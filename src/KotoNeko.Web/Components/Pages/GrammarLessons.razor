@@ -146,9 +146,9 @@ else
                     <p class="kn-hint">Your turn, @(_round + 1) of @GrammarReview.LessonSentences. Practice only: nothing here changes the SRS.</p>
                     <p class="kn-lesson-situation">Write a sentence of your own with <span class="kn-grammar-pattern">@entry.Pattern</span>: anything you like.</p>
                     <CompositionIdeas Ideas="_point.Situations" ShowHints="true" />
-                    @if (Grading.Route is not { IsConfigured: true })
+                    @if (Grading.Route(KotoNeko.Core.Llm.LlmFeature.LessonGrading) is not { IsConfigured: true })
                     {
-                        <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so your sentences can't be checked. You can still finish the lesson.</div>
+                        <div class="kn-msg kn-msg-err">No model is set up for lesson grading (see the <a href="/models">Models</a> page), so your sentences can't be checked. You can still finish the lesson.</div>
                     }
                     <JapaneseInput @ref="_input" @key="_round" AutoFocus="true" Placeholder="Your sentence…"
                                    OnChanged="t => _typed = t.Text" OnSubmit="CheckAsync" />
@@ -160,7 +160,7 @@ else
                     <div class="kn-toolbar">
                         @if (_verdict is null)
                         {
-                            <button class="kn-btn kn-btn-primary" disabled="@(_grading || Grading.Route is not { IsConfigured: true })" @onclick="CheckAsync">
+                            <button class="kn-btn kn-btn-primary" disabled="@(_grading || Grading.Route(KotoNeko.Core.Llm.LlmFeature.LessonGrading) is not { IsConfigured: true })" @onclick="CheckAsync">
                                 @(_grading ? "Checking…" : "Check")
                             </button>
                             <button class="kn-btn" disabled="@_grading" @onclick="SkipSituation" title="Move on without writing this one">Skip this one</button>

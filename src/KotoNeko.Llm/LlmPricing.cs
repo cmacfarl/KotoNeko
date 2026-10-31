@@ -25,6 +25,9 @@ public sealed class LlmPricing
 
     public bool Knows(string model) => _prices.ContainsKey(model);
 
+    /// <summary>A model's price in dollars per million tokens, or null when it has none.</summary>
+    public (decimal Input, decimal Output)? Price(string model) => _prices.TryGetValue(model, out var price) ? price : null;
+
     /// <summary>Every priced model ID, in configuration order.</summary>
     public IReadOnlyList<string> Models => _prices.Keys.ToList();
 

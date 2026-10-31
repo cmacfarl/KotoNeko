@@ -22,7 +22,7 @@
     <h2>Write a new one</h2>
     @if (_writer is null)
     {
-        <div class="kn-msg kn-msg-err">No model is set up to write scripts: choose one in <a href="/settings">Settings</a>, or set Llm:Jobs:Generate.</div>
+        <div class="kn-msg kn-msg-err">No model is set up to write scripts: choose one on the <a href="/models">Models</a> page.</div>
     }
     else
     {
@@ -35,7 +35,7 @@
                    @bind="_topic" @bind:event="oninput" disabled="@_writing" />
             <button class="kn-btn kn-btn-primary" disabled="@_writing" @onclick="WriteAsync">@(_writing ? "Writing…" : "Write it")</button>
         </div>
-        <p class="kn-hint">Written by @_writer.Provider · @_writer.Model (change it in <a href="/settings">Settings</a>), then voiced with Google TTS.</p>
+        <p class="kn-hint">Written by @_writer.Provider · @_writer.Model (change it on the <a href="/models">Models</a> page), then voiced with Google TTS.</p>
         @if (_confirmOverCap)
         {
             <div class="kn-msg">
@@ -112,7 +112,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _writer = await Scripts.WriterAsync();
+        _writer = Scripts.Writer();
         _today = await Scripts.TodayAsync(DateTime.UtcNow);
         _library = await Scripts.LibraryAsync();
     }

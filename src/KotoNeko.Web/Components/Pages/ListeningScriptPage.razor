@@ -124,7 +124,7 @@ else
         <p>@script.Question</p>
         @if (Listening.GraderRoute is not { IsConfigured: true })
         {
-            <div class="kn-msg kn-msg-err">No grader is configured (Llm:Jobs:Grade), so answers can't be checked.</div>
+            <div class="kn-msg kn-msg-err">No model is set up for comprehension grading (see the <a href="/models">Models</a> page), so answers can't be checked.</div>
         }
         <textarea class="kn-textarea" rows="2" maxlength="@ListeningAnswer.MaxAnswerLength" placeholder="Your answer, in English…"
                   @bind="_answer" @bind:event="oninput" disabled="@_checking"></textarea>

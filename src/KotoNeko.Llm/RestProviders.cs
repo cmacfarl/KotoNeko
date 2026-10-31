@@ -204,3 +204,108 @@ public sealed class LmStudioProvider : ILlmProvider
         return new LlmResponse(text, input, output);
     }
 }
+
+/// <summary>
+/// OpenAI's GPT models, through the Responses REST endpoint with a strict JSON schema
+/// (text.format) and a reasoning effort (Llm:OpenAI:Effort, or the request's effort).
+/// Responses aren't stored on OpenAI's side (store: false). The address is a setting
+/// (Llm:OpenAI:BaseUrl) only so a local stand-in can answer in tests.
+/// </summary>
+public sealed class OpenAIProvider : ILlmProvider
+{
+    public const string DefaultBaseUrl = "https://api.openai.com/v1";
+
+    private readonly HttpClient _http;
+    private readonly string? _apiKey;
+    private readonly string _effort;
+    private readonly string _baseUrl;
+
+    /// <param name="apiKey">From Llm:OpenAI:ApiKey or OPENAI_API_KEY.</param>
+    /// <param name="effort">low, medium, high, xhigh or max (Llm:OpenAI:Effort); default medium.</param>
+    /// <param name="baseUrl">Llm:OpenAI:BaseUrl; default https://api.openai.com/v1.</param>
+    public OpenAIProvider(HttpClient http, string? apiKey, string? effort = null, string? baseUrl = null)
+    {
+        _http = http;
+        _apiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
+        _effort = string.IsNullOrWhiteSpace(effort) ? "medium" : effort.Trim().ToLowerInvariant();
+        _baseUrl = string.IsNullOrWhiteSpace(baseUrl) ? DefaultBaseUrl : baseUrl.Trim().TrimEnd('/');
+    }
+
+    public string Name => "OpenAI";
+
+    public bool IsConfigured => _apiKey is not null;
+
+    /// <summary>
+    /// The effort sent. Not every GPT model takes none or minimal (GPT-6 Astra rejects
+    /// none, GPT-6.1 Sol both), so those become low; the rest pass through.
+    /// </summary>
+    public static string Effort(string level) => level is "none" or "minimal" ? "low" : level;
+
+    /// <summary>The Responses request body.</summary>
+    public static JsonObject Body(LlmRequest request, string model, string effort) => new() {
+        ["model"] = model,
+        ["instructions"] = request.System,
+        ["input"] = request.Prompt,
+        ["text"] = new JsonObject {
+            ["format"] = new JsonObject {
+                ["type"] = "json_schema",
+                ["name"] = request.SchemaName,
+                ["strict"] = true,
+                ["schema"] = request.Schema.DeepClone(),
+            },
+        },
+        ["reasoning"] = new JsonObject { ["effort"] = Effort(effort) },
+        ["max_output_tokens"] = request.MaxTokens,
+        ["store"] = false,
+    };
+
+    /// <summary>The answer in a Responses reply. Throws for a refusal or an answer cut short.</summary>
+    public static LlmResponse Parse(JsonNode response)
+    {
+        if (response["status"]?.GetValue<string>() == "incomplete") {
+            string reason = response["incomplete_details"]?["reason"]?.GetValue<string>() ?? "unspecified";
+            throw reason == "max_output_tokens"
+                ? new LlmException(LlmOutcome.BadOutput, "OpenAI's answer was cut off at the token limit.")
+                : new LlmException(LlmOutcome.Refused, $"OpenAI stopped the answer ({reason}).");
+        }
+
+        // The output holds reasoning items and then the message; only the message's text is the answer.
+        StringBuilder text = new();
+        foreach (JsonNode? item in response["output"]?.AsArray() ?? new JsonArray()) {
+            if (item?["type"]?.GetValue<string>() != "message") {
+                continue;
+            }
+            foreach (JsonNode? part in item["content"]?.AsArray() ?? new JsonArray()) {
+                switch (part?["type"]?.GetValue<string>()) {
+                    case "refusal":
+                        throw new LlmException(LlmOutcome.Refused, $"OpenAI declined the request: {part["refusal"]?.GetValue<string>()}");
+                    case "output_text":
+                        text.Append(part["text"]?.GetValue<string>());
+                        break;
+                }
+            }
+        }
+
+        // Output tokens include reasoning tokens.
+        JsonNode? usage = response["usage"];
+        return new LlmResponse(text.ToString(),
+            usage?["input_tokens"]?.GetValue<int>() ?? 0, usage?["output_tokens"]?.GetValue<int>() ?? 0);
+    }
+
+    public async Task<LlmResponse> CompleteJsonAsync(LlmRequest request, string model, CancellationToken cancellationToken)
+    {
+        if (_apiKey is null) {
+            throw new LlmException(LlmOutcome.NotConfigured, "No OpenAI API key is configured.");
+        }
+
+        JsonObject body = Body(request, model, request.Effort ?? _effort);
+        JsonNode response = await RestCalls.PostAsync(_http, Name, () => {
+            HttpRequestMessage message = new(HttpMethod.Post, _baseUrl + "/responses") {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            message.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
+            return message;
+        }, cancellationToken);
+        return Parse(response);
+    }
+}

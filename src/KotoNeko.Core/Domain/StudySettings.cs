@@ -33,14 +33,6 @@ public class StudySettings
     /// </summary>
     public int DailyListeningMinutes { get; set; } = 13;
 
-    /// <summary>
-    /// Which model writes listening scripts, as "Provider|model" (e.g. "Claude|claude-opus-5-5"),
-    /// so models can be compared. Empty, or a model no longer available, uses the Generate job's route.
-    /// </summary>
-    public string ListeningScriptModel { get; set; } = string.Empty;
-
-    public const int MaxModelChoiceLength = 120;
-
     /// <summary>Whether reviews ask the audio-first listening question.</summary>
     public bool ListeningEnabled { get; set; } = true;
 

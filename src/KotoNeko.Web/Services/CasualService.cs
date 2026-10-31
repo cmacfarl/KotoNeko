@@ -47,7 +47,7 @@ public sealed class CasualService
         _logger = logger;
     }
 
-    public Task<ModelChoice?> WriterAsync() => _listening.WriterAsync();
+    public ModelChoice? Writer() => _listening.Writer(LlmFeature.CasualRewrite);
 
     /// <summary>Every sentence a casual version can come from, now.</summary>
     internal static async Task<List<CasualCandidate>> CandidatesAsync(KotoNekoDbContext db)
@@ -97,8 +97,8 @@ public sealed class CasualService
     /// </summary>
     public async Task<int> WriteAsync(Func<string, Task> progress, CancellationToken cancellationToken = default)
     {
-        ModelChoice writer = await _listening.WriterAsync()
-            ?? throw new LlmException(LlmOutcome.NotConfigured, "No model is set up to write: choose one in Settings, or set Llm:Jobs:Generate.");
+        ModelChoice writer = Writer()
+            ?? throw new LlmException(LlmOutcome.NotConfigured, "No model is set up to write: choose one on the Models page.");
         List<CasualCandidate> batch;
         await using (KotoNekoDbContext db = await _factory.CreateDbContextAsync(cancellationToken)) {
             List<CasualCandidate> all = await CandidatesAsync(db);

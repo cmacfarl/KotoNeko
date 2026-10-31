@@ -11,9 +11,9 @@ public static class LlmServiceCollectionExtensions
 
     /// <summary>
     /// Register the LLM providers and <see cref="LlmService"/>, configured from
-    /// <paramref name="configuration"/>: keys from Llm:Claude:ApiKey / Llm:Gemini:ApiKey
-    /// (or ANTHROPIC_API_KEY / GEMINI_API_KEY), LM Studio from Llm:LmStudio:BaseUrl,
-    /// the timeout from Llm:TimeoutSeconds, and each job's route from Llm:Jobs.
+    /// <paramref name="configuration"/>: keys from Llm:Claude:ApiKey / Llm:Gemini:ApiKey / Llm:OpenAI:ApiKey
+    /// (or ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY), LM Studio from Llm:LmStudio:BaseUrl,
+    /// the timeout from Llm:TimeoutSeconds, and each job's recommended route from Llm:Jobs.
     /// Shared by the web app and the eval, so they can't drift apart.
     /// </summary>
     public static IServiceCollection AddKotoNekoLlm(this IServiceCollection services, IConfiguration configuration)
@@ -38,6 +38,10 @@ public static class LlmServiceCollectionExtensions
         services.AddSingleton<ILlmProvider>(sp => new LmStudioProvider(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
             configuration["Llm:LmStudio:BaseUrl"]));
+        services.AddSingleton<ILlmProvider>(sp => new OpenAIProvider(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+            FirstSet(configuration["Llm:OpenAI:ApiKey"], configuration["OPENAI_API_KEY"]),
+            configuration["Llm:OpenAI:Effort"], configuration["Llm:OpenAI:BaseUrl"]));
         services.AddSingleton<LlmService>();
         services.AddSingleton(new LlmPricing(configuration));
         services.AddSingleton<GradingService>();

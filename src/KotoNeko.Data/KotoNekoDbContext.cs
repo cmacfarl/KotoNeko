@@ -42,6 +42,7 @@ public class KotoNekoDbContext : DbContext
     public DbSet<CasualVersionAudio> CasualVersionAudios => Set<CasualVersionAudio>();
     public DbSet<GrammarExampleAudio> GrammarExampleAudios => Set<GrammarExampleAudio>();
     public DbSet<LlmCall> LlmCalls => Set<LlmCall>();
+    public DbSet<ModelAssignment> ModelAssignments => Set<ModelAssignment>();
     public DbSet<GradingTestItem> GradingTestItems => Set<GradingTestItem>();
     public DbSet<GradingEvalRun> GradingEvalRuns => Set<GradingEvalRun>();
     public DbSet<GradingEvalResult> GradingEvalResults => Set<GradingEvalResult>();
@@ -173,7 +174,6 @@ public class KotoNekoDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedNever();
-            entity.Property(e => e.ListeningScriptModel).HasMaxLength(KotoNeko.Core.Domain.StudySettings.MaxModelChoiceLength).IsRequired();
             entity.HasData(new StudySettings());
         });
 
@@ -369,6 +369,14 @@ public class KotoNekoDbContext : DbContext
             entity.Property(e => e.Error).HasMaxLength(500);
             entity.Property(e => e.Cost).HasPrecision(14, 8);
             entity.HasIndex(e => e.CalledAt);
+        });
+
+        modelBuilder.Entity<ModelAssignment>(entity =>
+        {
+            entity.HasKey(e => e.Feature);
+            entity.Property(e => e.Feature).ValueGeneratedNever();
+            entity.Property(e => e.Provider).HasMaxLength(ModelAssignment.MaxProviderLength).IsRequired();
+            entity.Property(e => e.Model).HasMaxLength(ModelAssignment.MaxModelLength).IsRequired();
         });
 
         modelBuilder.Entity<PracticeSentenceAudio>(entity =>

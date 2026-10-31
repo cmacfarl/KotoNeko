@@ -145,12 +145,12 @@ async Task<int> PrelabelAsync()
 async Task<int> GradeAsync()
 {
     GradingService grading = serviceProvider.GetRequiredService<GradingService>();
-    LlmRoute? route = grading.Route;
+    LlmRoute? route = grading.Route(LlmFeature.GradingEval);
     if (route is null) {
         return Fail("No Grade route: set Llm:Jobs:Grade:Provider and :Model, or pass --provider and --model.");
     }
     if (!route.IsConfigured) {
-        return Fail($"{route.Provider} isn't configured (no key or address). See Settings → AI providers.");
+        return Fail($"{route.Provider} isn't configured (no key or address). See the provider table on the Models page.");
     }
     string? effort = Option("effort");
 

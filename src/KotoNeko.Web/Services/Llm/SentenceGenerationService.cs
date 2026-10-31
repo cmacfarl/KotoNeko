@@ -30,7 +30,7 @@ public sealed class SentenceGenerationService
     }
 
     /// <summary>Where generation goes, or null when no route is configured.</summary>
-    public LlmRoute? Route => _llm.Route(LlmJob.Generate);
+    public LlmRoute? Route => _llm.Route(LlmFeature.PracticeSentences);
 
     /// <summary>
     /// Ask for new candidates for a word and save them as drafts. Returns how many

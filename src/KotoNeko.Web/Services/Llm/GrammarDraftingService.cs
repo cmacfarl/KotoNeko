@@ -31,7 +31,7 @@ public sealed class GrammarDraftingService
     }
 
     /// <summary>Where drafting goes, or null when no route is configured.</summary>
-    public LlmRoute? Route => _llm.Route(LlmJob.Generate);
+    public LlmRoute? Route => _llm.Route(LlmFeature.GrammarDrafting);
 
     /// <summary>
     /// Draft the point's content. Returns a message for the user. Throws

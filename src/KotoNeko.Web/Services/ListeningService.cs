@@ -53,19 +53,17 @@ public sealed class ListeningService
 
     private readonly IDbContextFactory<KotoNekoDbContext> _factory;
     private readonly LlmService _llm;
-    private readonly LlmPricing _pricing;
     private readonly JapaneseTtsService _tts;
     private readonly SentenceReadingService _readings;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ListeningService> _logger;
 
     public ListeningService(
-        IDbContextFactory<KotoNekoDbContext> factory, LlmService llm, LlmPricing pricing, JapaneseTtsService tts,
+        IDbContextFactory<KotoNekoDbContext> factory, LlmService llm, JapaneseTtsService tts,
         SentenceReadingService readings, IConfiguration configuration, ILogger<ListeningService> logger)
     {
         _factory = factory;
         _llm = llm;
-        _pricing = pricing;
         _tts = tts;
         _readings = readings;
         _configuration = configuration;
@@ -74,29 +72,14 @@ public sealed class ListeningService
 
     public bool CanVoice => _tts.IsConfigured;
 
-    /// <summary>Models that can write scripts: the priced ones whose provider is set up.</summary>
-    public IReadOnlyList<ModelChoice> ScriptModels() => ModelChoices.Available(_pricing.Models, _llm.IsConfigured);
-
     /// <summary>
-    /// Who writes scripts: the model chosen in Settings when it's still available,
-    /// otherwise the Generate job's route. Null when neither is set up.
+    /// Who writes for a use case (scripts, or casual versions): the model chosen on the
+    /// Models page, or the recommended one. Null when neither is set up.
     /// </summary>
-    public ModelChoice? Writer(StudySettings settings)
-    {
-        if (ModelChoice.Parse(settings.ListeningScriptModel) is { } chosen && _llm.IsConfigured(chosen.Provider)
-            && ScriptModels().Any(m => m.Key == chosen.Key)) {
-            return chosen;
-        }
-        return _llm.Route(LlmJob.Generate) is { IsConfigured: true } route ? new ModelChoice(route.Provider, route.Model) : null;
-    }
+    public ModelChoice? Writer(LlmFeature feature = LlmFeature.ListeningScript) =>
+        _llm.Route(feature) is { IsConfigured: true } route ? new ModelChoice(route.Provider, route.Model) : null;
 
-    public async Task<ModelChoice?> WriterAsync()
-    {
-        await using KotoNekoDbContext db = await _factory.CreateDbContextAsync();
-        return Writer(await SettingsService.LoadAsync(db));
-    }
-
-    public LlmRoute? GraderRoute => _llm.Route(LlmJob.Grade);
+    public LlmRoute? GraderRoute => _llm.Route(LlmFeature.ListeningComprehension);
 
     public async Task<List<ListeningSummary>> LibraryAsync()
     {
@@ -173,8 +156,8 @@ public sealed class ListeningService
         List<string> titles;
         await using (KotoNekoDbContext db = await _factory.CreateDbContextAsync(cancellationToken)) {
             StudySettings settings = await SettingsService.LoadAsync(db);
-            writer = Writer(settings)
-                ?? throw new LlmException(LlmOutcome.NotConfigured, "No model is set up to write scripts: choose one in Settings, or set Llm:Jobs:Generate.");
+            writer = Writer()
+                ?? throw new LlmException(LlmOutcome.NotConfigured, "No model is set up to write scripts: choose one on the Models page.");
             List<string> pool = await db.Vocabulary.AsNoTracking().InPool(settings.KnownWordStage)
                 .Select(v => v.Japanese).ToListAsync(cancellationToken);
             known = pool.Distinct().OrderBy(_ => Random.Shared.Next()).Take(ListeningScripts.KnownWordSample).ToList();

@@ -1,0 +1,128 @@
+@page "/models"
+@using System.Globalization
+@using KotoNeko.Core.Llm
+@using KotoNeko.Llm
+@inject LlmService Llm
+@inject LlmPricing Pricing
+
+<PageTitle>Models · KotoNeko</PageTitle>
+
+<h1>Models</h1>
+<p class="kn-hint">
+    Which model does each job. A change applies to the next call. "Recommended" is the model set for the job in
+    <code>Llm:Jobs</code> in appsettings.json, so editing that file still changes every use case left on
+    Recommended. Prices are dollars per million tokens in and out, from <code>Llm:Prices</code>;
+    the <a href="/accounting">Accounting</a> page shows what each use case has cost.
+</p>
+
+@if (_message is not null)
+{
+    <div class="kn-msg @(_failed ? "kn-msg-err" : "kn-msg-ok")">@_message</div>
+}
+
+<div class="kn-panel">
+    <table class="kn-table kn-models">
+        <thead><tr><th>Use case</th><th>Model</th></tr></thead>
+        <tbody>
+        @foreach (ModelUseCase useCase in ModelUseCases.All)
+        {
+            LlmRoute? recommended = Llm.RecommendedRoute(useCase.Job);
+            ModelChoice? chosen = Llm.Assigned(useCase.Feature);
+            <tr>
+                <td>
+                    <strong>@useCase.Name</strong>
+                    <div class="kn-hint">@useCase.Description</div>
+                </td>
+                <td>
+                    <select class="kn-select" value="@(chosen?.Key ?? "")" disabled="@_saving"
+                            @onchange="e => ChooseAsync(useCase, e.Value as string)">
+                        <option value="">Recommended: @(recommended is null ? "none set" : Describe(recommended.Provider, recommended.Model))</option>
+                        @foreach (ModelOption option in OptionsFor(chosen))
+                        {
+                            <option value="@option.Choice.Key" disabled="@(!option.IsConfigured)">
+                                @Describe(option.Choice.Provider, option.Choice.Model)@(option.IsConfigured ? "" : $" (needs a {option.Choice.Provider} key)")
+                            </option>
+                        }
+                    </select>
+                    @if (chosen is not null && !Llm.IsConfigured(chosen.Provider))
+                    {
+                        <div class="kn-msg kn-msg-err kn-models-warning">
+                            @chosen.Provider has no key, so the recommended model is used until it has one.
+                        </div>
+                    }
+                    else if (chosen is null && recommended is { IsConfigured: false })
+                    {
+                        <div class="kn-msg kn-msg-err kn-models-warning">
+                            @recommended.Provider has no key: choose another model, or set it up.
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    <p class="kn-hint">
+        Pre-labelling the grading test set and the grading eval run from the console and keep to configuration
+        (<code>Llm:Labellers</code> and the Grade job, or their command-line options).
+    </p>
+</div>
+
+<div class="kn-panel">
+    <h2>Providers</h2>
+    <p class="kn-hint">
+        A model can be chosen once its provider has a key. Keys are never shown here and never go in tracked files:
+        put them in <code>appsettings.Development.json</code> (git-ignored) or an environment variable, then restart.
+    </p>
+    <table class="kn-table">
+        <thead><tr><th>Provider</th><th>Status</th><th>How to set it up</th></tr></thead>
+        <tbody>
+        @foreach (LlmProviderStatus provider in Llm.Providers())
+        {
+            <tr>
+                <td>@provider.Name</td>
+                <td>@(provider.IsConfigured ? "✓ configured" : "not configured")</td>
+                <td class="kn-hint">@provider.HowToConfigure</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private string? _message;
+    private bool _failed;
+    private bool _saving;
+
+    /// <summary>The models to offer, plus a chosen one no longer listed (its price was removed), so the select can show it.</summary>
+    private IEnumerable<ModelOption> OptionsFor(ModelChoice? chosen)
+    {
+        IReadOnlyList<ModelOption> options = Llm.ModelOptions();
+        return chosen is null || options.Any(o => o.Choice.Key == chosen.Key)
+            ? options
+            : options.Append(new ModelOption(chosen, Llm.IsConfigured(chosen.Provider)));
+    }
+
+    private string Describe(string provider, string model) =>
+        Pricing.Price(model) is { } price
+            ? $"{provider} · {model} (${Money(price.Input)} / ${Money(price.Output)})"
+            : $"{provider} · {model}";
+
+    private static string Money(decimal value) => value.ToString(value < 1 ? "0.00" : "0.##", CultureInfo.InvariantCulture);
+
+    private async Task ChooseAsync(ModelUseCase useCase, string? key)
+    {
+        _saving = true;
+        try {
+            ModelChoice? choice = ModelChoice.Parse(key);
+            await Llm.SetAssignmentAsync(useCase.Feature, choice);
+            LlmRoute? now = Llm.Route(useCase.Feature);
+            _message = $"{useCase.Name}: {(choice is null ? "back to the recommended model" : "changed")}, now {(now is null ? "no model" : $"{now.Provider} · {now.Model}")}.";
+            _failed = false;
+        } catch (InvalidOperationException ex) {
+            _message = ex.Message;
+            _failed = true;
+        } finally {
+            _saving = false;
+        }
+    }
+}
